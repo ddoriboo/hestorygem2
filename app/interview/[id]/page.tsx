@@ -3,6 +3,8 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { getSessionPrompt } from '@/lib/session-prompts'
+import VoiceInterview from '@/components/VoiceInterview'
+import TextInterview from '@/components/TextInterview'
 
 interface Conversation {
   id: string
@@ -25,20 +27,11 @@ export default function InterviewPage() {
   
   const [session, setSession] = useState<Session | null>(null)
   const [conversations, setConversations] = useState<Conversation[]>([])
-  const [isRecording, setIsRecording] = useState(false)
-  const [currentQuestion, setCurrentQuestion] = useState('')
-  const [userAnswer, setUserAnswer] = useState('')
   const [loading, setLoading] = useState(true)
-  const [aiResponse, setAiResponse] = useState('')
-  const chatEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     fetchSessionAndConversations()
   }, [sessionId, router])
-
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [conversations, currentQuestion])
 
   const fetchSessionAndConversations = async () => {
     try {
@@ -59,12 +52,7 @@ export default function InterviewPage() {
       const conversationsData = await conversationsResponse.json()
       setConversations(conversationsData.conversations || [])
 
-      // 세션이 시작되지 않았으면 초기 메시지 설정
-      if (!conversationsData.conversations || conversationsData.conversations.length === 0) {
-        const systemPrompt = getSessionPrompt(currentSession.sessionNumber)
-        const initialMessage = systemPrompt.split('세션을 시작하세요.')[1].trim()
-        setCurrentQuestion(initialMessage)
-      }
+      // 기존 대화 내용만 로드
     } catch (error) {
       console.error('Error fetching data:', error)
     } finally {
@@ -72,30 +60,7 @@ export default function InterviewPage() {
     }
   }
 
-  const handleStartConversation = async () => {
-    if (!session) return
-    
-    setIsRecording(true)
-    // 여기서는 일단 텍스트 입력으로 대체
-    // 실제로는 음성 녹음 기능을 구현해야 함
-  }
-
-  const handleStopConversation = async () => {
-    setIsRecording(false)
-    
-    if (!userAnswer.trim()) return
-
-    // 대화 저장
-    await saveConversation(currentQuestion, userAnswer)
-    
-    // AI 응답 생성 (여기서는 간단한 응답으로 대체)
-    // 실제로는 OpenAI API를 호출해야 함
-    setAiResponse('아버님의 소중한 이야기 감사합니다. 다음 질문으로 넘어가겠습니다.')
-    
-    // 다음 질문 설정 (임시)
-    setCurrentQuestion('다음 질문입니다...')
-    setUserAnswer('')
-  }
+  // 음성 인터뷰 컴포넌트에서 대화 저장을 처리하므로 이 함수들은 제거
 
   const saveConversation = async (question: string, answer: string) => {
     try {
@@ -159,74 +124,56 @@ export default function InterviewPage() {
         </div>
       </header>
 
-      {/* 대화 영역 */}
+      {/* 음성 인터뷰 영역 */}
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6" style={{ minHeight: '400px', maxHeight: '600px', overflowY: 'auto' }}>
-          {/* 기존 대화 내용 표시 */}
-          {conversations.map((conv) => (
-            <div key={conv.id} className="mb-6">
-              <div className="mb-3">
-                <p className="text-lg font-medium text-blue-700">AI:</p>
-                <p className="text-lg text-gray-800 mt-1">{conv.question}</p>
-              </div>
-              <div className="ml-8">
-                <p className="text-lg font-medium text-green-700">아버님:</p>
-                <p className="text-lg text-gray-800 mt-1">{conv.answer}</p>
-              </div>
-            </div>
-          ))}
-
-          {/* 현재 질문 */}
-          {currentQuestion && (
-            <div className="mb-6">
-              <div className="mb-3">
-                <p className="text-lg font-medium text-blue-700">AI:</p>
-                <p className="text-lg text-gray-800 mt-1">{currentQuestion}</p>
-              </div>
-            </div>
-          )}
-
-          {/* AI 응답 */}
-          {aiResponse && (
-            <div className="mb-6">
-              <p className="text-lg text-gray-600 italic">{aiResponse}</p>
-            </div>
-          )}
-
-          <div ref={chatEndRef} />
-        </div>
-
-        {/* 입력 영역 (임시 텍스트 입력) */}
-        {isRecording && (
+        {/* 기존 대화 내용 표시 */}
+        {conversations.length > 0 && (
           <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-            <textarea
-              value={userAnswer}
-              onChange={(e) => setUserAnswer(e.target.value)}
-              placeholder="답변을 입력하세요..."
-              className="w-full p-4 text-lg border rounded resize-none"
-              rows={4}
-            />
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">이전 대화 기록</h3>
+            <div className="max-h-60 overflow-y-auto space-y-4">
+              {conversations.map((conv) => (
+                <div key={conv.id} className="border-b border-gray-200 pb-4">
+                  <div className="mb-2">
+                    <p className="text-sm font-medium text-blue-700">AI:</p>
+                    <p className="text-sm text-gray-700">{conv.question}</p>
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-green-700">아버님:</p>
+                    <p className="text-sm text-gray-700">{conv.answer}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
-        {/* 버튼 영역 */}
-        <div className="flex justify-center space-x-4">
-          {!isRecording ? (
-            <button
-              onClick={handleStartConversation}
-              className="px-8 py-4 bg-blue-600 text-white text-xl font-semibold rounded-lg hover:bg-blue-700 transition shadow-lg"
-            >
-              대화 시작하기
-            </button>
-          ) : (
-            <button
-              onClick={handleStopConversation}
-              className="px-8 py-4 bg-red-600 text-white text-xl font-semibold rounded-lg hover:bg-red-700 transition shadow-lg"
-            >
-              답변 완료
-            </button>
-          )}
-          
+        {/* AI 인터뷰 컴포넌트 - 텍스트 기반 (음성은 개발 중) */}
+        <TextInterview
+          sessionId={sessionId}
+          sessionNumber={session?.sessionNumber || 1}
+          onConversationSave={saveConversation}
+        />
+        
+        {/* 음성 인터뷰 (개발 중) */}
+        <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <h4 className="text-lg font-semibold text-yellow-800 mb-2">🎤 음성 인터뷰 (개발 중)</h4>
+          <p className="text-yellow-700 mb-4">
+            음성 기반 인터뷰 기능은 현재 개발 중입니다. 지금은 텍스트 기반 인터뷰를 이용해주세요.
+          </p>
+          <details className="text-sm text-yellow-600">
+            <summary className="cursor-pointer font-medium">음성 인터뷰 컴포넌트 (테스트용)</summary>
+            <div className="mt-2 p-2 bg-yellow-100 rounded">
+              <VoiceInterview
+                sessionId={sessionId}
+                sessionNumber={session?.sessionNumber || 1}
+                onConversationSave={saveConversation}
+              />
+            </div>
+          </details>
+        </div>
+
+        {/* 세션 완료 버튼 */}
+        <div className="flex justify-center mt-6">
           <button
             onClick={handleCompleteSession}
             className="px-8 py-4 bg-green-600 text-white text-xl font-semibold rounded-lg hover:bg-green-700 transition shadow-lg"
