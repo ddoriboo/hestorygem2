@@ -48,8 +48,8 @@ export default function OpenAIRealtimeVoiceInterview({ sessionNumber, onConversa
         throw new Error('세션 토큰 요청에 실패했습니다.')
       }
 
-      const { sessionToken, sessionId } = await tokenResponse.json()
-      console.log('세션 토큰 받음:', sessionId)
+      const { apiKey, sessionPrompt, model, voice } = await tokenResponse.json()
+      console.log('API 설정 받음:', { model, voice })
 
       setConnectionStatus('마이크 권한 요청 중...')
 
@@ -91,7 +91,7 @@ export default function OpenAIRealtimeVoiceInterview({ sessionNumber, onConversa
       setConnectionStatus('OpenAI Realtime API 연결 중...')
 
       // WebRTC 설정
-      await setupWebRTC(sessionToken)
+      await setupWebRTC(apiKey, sessionPrompt, model, voice)
 
     } catch (error) {
       console.error('Realtime 연결 오류:', error)
@@ -99,7 +99,7 @@ export default function OpenAIRealtimeVoiceInterview({ sessionNumber, onConversa
     }
   }, [sessionNumber])
 
-  const setupWebRTC = useCallback(async (sessionToken: string) => {
+  const setupWebRTC = useCallback(async (apiKey: string, sessionPrompt: string, model: string, voice: string) => {
     try {
       // RTCPeerConnection 생성
       const peerConnection = new RTCPeerConnection()

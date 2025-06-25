@@ -40,46 +40,14 @@ export async function POST(request: NextRequest) {
 
 첫 인사를 시작해주세요.`
 
-    // OpenAI Realtime API 세션 생성
-    const sessionResponse = await fetch('https://api.openai.com/v1/realtime/sessions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openaiApiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-realtime-preview-2024-12-17',
-        voice: 'sol',
-        instructions: sessionPrompt + "\n\n말할 때는 자연스럽고 빠르게 말해주세요.",
-        input_audio_format: 'pcm16',
-        output_audio_format: 'pcm16',
-        input_audio_transcription: {
-          model: 'whisper-1'
-        },
-        turn_detection: {
-          type: 'server_vad',
-          threshold: 0.5,
-          prefix_padding_ms: 300,
-          silence_duration_ms: 800
-        },
-        temperature: 0.7,
-        max_response_output_tokens: 150
-      })
-    })
-
-    if (!sessionResponse.ok) {
-      const errorText = await sessionResponse.text()
-      console.error('OpenAI 세션 생성 실패:', errorText)
-      return NextResponse.json({ 
-        error: `OpenAI 세션 생성 실패: ${sessionResponse.status}` 
-      }, { status: 500 })
-    }
-
-    const sessionData = await sessionResponse.json()
+    // OpenAI API 키와 설정을 클라이언트에 안전하게 전달
+    // (실제 세션 생성은 클라이언트에서 WebRTC 연결 시 진행)
     
     return NextResponse.json({ 
-      sessionToken: sessionData.client_secret.value,
-      sessionId: sessionData.id
+      apiKey: openaiApiKey,
+      sessionPrompt: sessionPrompt + "\n\n말할 때는 자연스럽고 빠르게 말해주세요.",
+      model: 'gpt-4o-realtime-preview-2024-10-01',
+      voice: 'sol'
     })
 
   } catch (error) {
