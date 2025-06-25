@@ -62,9 +62,10 @@ export async function POST(request: NextRequest) {
       name: 'auth-token',
       value: token,
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7 // 7일
+      secure: true, // Railway는 항상 HTTPS 사용
+      sameSite: 'lax', // 같은 사이트 내 쿠키 허용
+      maxAge: 60 * 60 * 24 * 7, // 7일
+      path: '/' // 모든 경로에서 쿠키 사용 가능
     })
 
     console.log('로그인 성공 응답 전송')
