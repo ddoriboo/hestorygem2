@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { verifyToken } from '@/lib/auth'
 
+export const runtime = 'nodejs'
+
 // 대화 내용 저장
 export async function POST(request: NextRequest) {
   try {

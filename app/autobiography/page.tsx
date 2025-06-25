@@ -12,7 +12,7 @@ export default function AutobiographyPage() {
 
   useEffect(() => {
     fetchAutobiography()
-  }, [])
+  }, [router])
 
   const fetchAutobiography = async () => {
     try {

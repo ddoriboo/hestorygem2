@@ -17,11 +17,7 @@ export default function HomePage() {
   const router = useRouter()
   const [sessions, setSessions] = useState<Session[]>([])
   const [loading, setLoading] = useState(true)
-  const [user, setUser] = useState<any>(null)
-
-  useEffect(() => {
-    fetchUserAndSessions()
-  }, [])
+  const [user, setUser] = useState<{id: string, username: string, createdAt: string} | null>(null)
 
   const fetchUserAndSessions = async () => {
     try {
@@ -31,19 +27,28 @@ export default function HomePage() {
         router.push('/login')
         return
       }
+
       const userData = await userResponse.json()
       setUser(userData.user)
 
       // 세션 목록 가져오기
-      const sessionsResponse = await fetch('/api/sessions')
-      const sessionsData = await sessionsResponse.json()
-      setSessions(sessionsData.sessions)
+      const sessionResponse = await fetch('/api/sessions')
+      if (sessionResponse.ok) {
+        const sessionData = await sessionResponse.json()
+        setSessions(sessionData.sessions)
+      }
     } catch (error) {
       console.error('Error fetching data:', error)
+      router.push('/login')
     } finally {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    fetchUserAndSessions()
+  }, [router])
+
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' })
@@ -100,7 +105,7 @@ export default function HomePage() {
       <header className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex justify-between items-center">
-            <h1 className="text-3xl font-bold text-gray-900">He'story</h1>
+            <h1 className="text-3xl font-bold text-gray-900">He&apos;story</h1>
             <div className="flex items-center space-x-4">
               <span className="text-lg text-gray-700">안녕하세요, {user?.username}님</span>
               <button

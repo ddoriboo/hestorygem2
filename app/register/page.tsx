@@ -55,7 +55,7 @@ export default function RegisterPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg shadow-lg">
         <div>
-          <h1 className="text-4xl font-bold text-center text-gray-900">He'story</h1>
+          <h1 className="text-4xl font-bold text-center text-gray-900">He&apos;story</h1>
           <h2 className="mt-6 text-center text-2xl font-semibold text-gray-900">
             회원가입
           </h2>

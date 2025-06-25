@@ -34,7 +34,7 @@ export default function MyStoryPage() {
 
   useEffect(() => {
     fetchAllConversations()
-  }, [])
+  }, [router])
 
   const fetchAllConversations = async () => {
     try {

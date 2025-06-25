@@ -34,7 +34,7 @@ export default function InterviewPage() {
 
   useEffect(() => {
     fetchSessionAndConversations()
-  }, [sessionId])
+  }, [sessionId, router])
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
