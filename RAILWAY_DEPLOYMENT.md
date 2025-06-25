@@ -32,16 +32,17 @@ Set these environment variables in your Railway project:
 
 ## Database Setup
 
-After deployment, Railway will automatically run:
-- `prisma migrate deploy` - Creates all database tables and indexes
-- `prisma generate` - Generates Prisma Client
-- Database migrations will be applied automatically during build process
+Railway deployment process:
+1. **Build Phase**: `prisma generate && next build` (no database connection needed)
+2. **Runtime Phase**: `prisma migrate deploy && next start` (runs when container starts)
 
-The initial migration includes:
+Database migrations run automatically when the app starts, creating:
 - User table (for authentication)
-- Session table (for interview sessions 1-12)
+- Session table (for interview sessions 1-12) 
 - Conversation table (for Q&A pairs)
 - Autobiography table (for generated life stories)
+
+This ensures migrations run with live database connection at startup, not during Docker build.
 
 ## Build Configuration
 
