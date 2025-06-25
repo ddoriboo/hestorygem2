@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
       apiKey: openaiApiKey,
       sessionPrompt: sessionPrompt + "\n\n말할 때는 자연스럽고 빠르게 말해주세요.",
       model: 'gpt-4o-realtime-preview-2024-10-01',
-      voice: 'sol'
+      voice: 'sage'
     })
 
   } catch (error) {
