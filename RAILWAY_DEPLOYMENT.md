@@ -33,8 +33,15 @@ Set these environment variables in your Railway project:
 ## Database Setup
 
 After deployment, Railway will automatically run:
-- `prisma generate` (included in build script)
-- Database migrations will be applied automatically via Prisma
+- `prisma migrate deploy` - Creates all database tables and indexes
+- `prisma generate` - Generates Prisma Client
+- Database migrations will be applied automatically during build process
+
+The initial migration includes:
+- User table (for authentication)
+- Session table (for interview sessions 1-12)
+- Conversation table (for Q&A pairs)
+- Autobiography table (for generated life stories)
 
 ## Build Configuration
 
