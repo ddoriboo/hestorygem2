@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import VoiceInterview from '@/components/VoiceInterview'
 import TextInterview from '@/components/TextInterview'
 import RealtimeVoiceInterview from '@/components/RealtimeVoiceInterview'
+import WebSpeechVoiceInterview from '@/components/WebSpeechVoiceInterview'
 
 interface Conversation {
   id: string
@@ -147,15 +148,15 @@ export default function InterviewPage() {
           </div>
         )}
 
-        {/* AI 인터뷰 컴포넌트 - 텍스트 기반 (음성은 개발 중) */}
-        <TextInterview
+        {/* 음성 인터뷰 - Web Speech API 사용 */}
+        <WebSpeechVoiceInterview
           sessionNumber={session?.sessionNumber || 1}
           onConversationSave={saveConversation}
         />
         
-        {/* 실시간 음성 인터뷰 */}
+        {/* 텍스트 기반 인터뷰 (대안) */}
         <div className="mt-6">
-          <RealtimeVoiceInterview
+          <TextInterview
             sessionNumber={session?.sessionNumber || 1}
             onConversationSave={saveConversation}
           />
@@ -167,6 +168,13 @@ export default function InterviewPage() {
           <details className="text-sm text-gray-600">
             <summary className="cursor-pointer font-medium">이전 버전 컴포넌트들 (참고용)</summary>
             <div className="mt-4 space-y-4">
+              <div className="p-3 bg-gray-100 rounded">
+                <h5 className="font-medium text-gray-700 mb-2">실시간 음성 인터뷰 컴포넌트 (서버 이슈):</h5>
+                <RealtimeVoiceInterview
+                  sessionNumber={session?.sessionNumber || 1}
+                  onConversationSave={saveConversation}
+                />
+              </div>
               <div className="p-3 bg-gray-100 rounded">
                 <h5 className="font-medium text-gray-700 mb-2">기본 음성 인터뷰 컴포넌트:</h5>
                 <VoiceInterview
