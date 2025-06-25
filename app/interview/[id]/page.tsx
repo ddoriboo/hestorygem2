@@ -162,29 +162,6 @@ export default function InterviewPage() {
           />
         </div>
 
-        {/* 개발용 컴포넌트들 */}
-        <div className="mt-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
-          <h4 className="text-lg font-semibold text-gray-800 mb-2">🔧 개발자 도구</h4>
-          <details className="text-sm text-gray-600">
-            <summary className="cursor-pointer font-medium">대안 인터뷰 방식들</summary>
-            <div className="mt-4 space-y-4">
-              <div className="p-3 bg-gray-100 rounded">
-                <h5 className="font-medium text-gray-700 mb-2">이전 WebSocket 기반 컴포넌트 (서버 이슈로 제거됨):</h5>
-                <RealtimeVoiceInterview
-                  sessionNumber={session?.sessionNumber || 1}
-                  onConversationSave={saveConversation}
-                />
-              </div>
-              <div className="p-3 bg-gray-100 rounded">
-                <h5 className="font-medium text-gray-700 mb-2">기본 음성 인터뷰 컴포넌트:</h5>
-                <VoiceInterview
-                  sessionNumber={session?.sessionNumber || 1}
-                  onConversationSave={saveConversation}
-                />
-              </div>
-            </div>
-          </details>
-        </div>
 
         {/* 세션 완료 버튼 */}
         <div className="flex justify-center mt-6">

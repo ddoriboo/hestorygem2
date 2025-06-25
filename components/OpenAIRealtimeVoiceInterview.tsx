@@ -53,21 +53,38 @@ export default function OpenAIRealtimeVoiceInterview({ sessionNumber, onConversa
 
       setConnectionStatus('마이크 권한 요청 중...')
 
-      // 마이크 설정
+      // 마이크 설정 (모바일 호환성 개선)
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ 
+        // 모바일에서도 호환되는 간단한 constraints 사용
+        const audioConstraints = {
           audio: {
             echoCancellation: true,
             noiseSuppression: true,
-            sampleRate: 24000,
-            channelCount: 1
+            autoGainControl: true,
+            // 모바일에서 문제가 될 수 있는 설정들 제거
+            ...(typeof window !== 'undefined' && !navigator.userAgent.match(/iPhone|iPad|iPod|Android/i) && {
+              sampleRate: 24000,
+              channelCount: 1
+            })
           }
-        })
+        }
+
+        const stream = await navigator.mediaDevices.getUserMedia(audioConstraints)
         audioStreamRef.current = stream
         console.log('마이크 스트림 설정 완료')
-      } catch (error) {
+      } catch (error: any) {
         console.error('마이크 액세스 실패:', error)
-        setConnectionStatus('마이크 권한이 필요합니다.')
+        
+        // 더 구체적인 오류 메시지
+        if (error.name === 'NotAllowedError') {
+          setConnectionStatus('마이크 권한이 거부되었습니다. 브라우저 설정에서 마이크 권한을 허용해주세요.')
+        } else if (error.name === 'NotFoundError') {
+          setConnectionStatus('마이크가 감지되지 않습니다.')
+        } else if (error.name === 'NotSupportedError') {
+          setConnectionStatus('이 브라우저는 음성 기능을 지원하지 않습니다.')
+        } else {
+          setConnectionStatus(`마이크 오류: ${error.message || '알 수 없는 오류'}`)
+        }
         return
       }
 
@@ -171,10 +188,41 @@ export default function OpenAIRealtimeVoiceInterview({ sessionNumber, onConversa
     }
   }, [])
 
+  const addUserMessage = useCallback((transcript: string) => {
+    const userMessage: Conversation = {
+      role: 'user',
+      content: transcript,
+      timestamp: new Date()
+    }
+    
+    setConversations(prev => {
+      // 중복 메시지 방지
+      const lastMessage = prev[prev.length - 1]
+      if (lastMessage && lastMessage.role === 'user' && lastMessage.content === transcript) {
+        return prev
+      }
+      
+      const newConversations = [...prev, userMessage]
+      
+      // 대화 저장 (가장 최근 AI 질문과 사용자 답변 쌍으로 저장)
+      const lastAssistant = newConversations
+        .slice()
+        .reverse()
+        .find(conv => conv.role === 'assistant')
+      
+      if (lastAssistant) {
+        console.log('💾 대화 저장:', lastAssistant.content, userMessage.content)
+        onConversationSave(lastAssistant.content, userMessage.content)
+      }
+      
+      return newConversations
+    })
+  }, [onConversationSave])
+
   const handleRealtimeEvent = useCallback((event: MessageEvent) => {
     try {
       const data = JSON.parse(event.data)
-      console.log('Realtime 이벤트:', data.type, data)
+      console.log('🔄 Realtime 이벤트:', data.type, data)
 
       switch (data.type) {
         case 'session.created':
@@ -196,45 +244,50 @@ export default function OpenAIRealtimeVoiceInterview({ sessionNumber, onConversa
           break
 
         case 'response.audio_transcript.done':
-          // AI 응답 완료
-          const assistantMessage: Conversation = {
-            role: 'assistant',
-            content: data.transcript || '',
-            timestamp: new Date(),
-            audioComplete: true
+          // AI 응답 완료 (메시지 추가는 여기서만 처리)
+          if (data.transcript && data.transcript.trim()) {
+            const assistantMessage: Conversation = {
+              role: 'assistant',
+              content: data.transcript.trim(),
+              timestamp: new Date(),
+              audioComplete: true
+            }
+            setConversations(prev => [...prev, assistantMessage])
           }
-          setConversations(prev => [...prev, assistantMessage])
           setCurrentTranscript('')
           setIsAISpeaking(false)
           break
 
+        case 'conversation.item.input_audio_transcription.completed':
+          // 사용자 음성 텍스트 변환 완료
+          console.log('🎙️ 사용자 음성 텍스트 변환 완료:', data)
+          if (data.transcript && data.transcript.trim()) {
+            addUserMessage(data.transcript.trim())
+          }
+          break
+
         case 'conversation.item.created':
-          // 사용자 음성 메시지 생성됨
+          // 대화 아이템 생성됨 (사용자 메시지 포함)
+          console.log('💬 대화 아이템 생성됨:', data)
           if (data.item?.type === 'message' && data.item?.role === 'user') {
             const content = data.item.content
             if (content && content.length > 0) {
-              const transcript = content.map((c: any) => c.text || c.transcript || '').filter(Boolean).join(' ')
-              if (transcript) {
-                const userMessage: Conversation = {
-                  role: 'user',
-                  content: transcript,
-                  timestamp: new Date()
-                }
-                setConversations(prev => {
-                  const newConversations = [...prev, userMessage]
-                  
-                  // 대화 저장 (질문-답변 쌍)
-                  if (newConversations.length >= 2) {
-                    const lastAssistant = newConversations[newConversations.length - 2]
-                    if (lastAssistant && lastAssistant.role === 'assistant') {
-                      onConversationSave(lastAssistant.content, userMessage.content)
-                    }
-                  }
-                  
-                  return newConversations
-                })
+              const transcript = content
+                .map((c: any) => c.text || c.transcript || c.audio?.transcript || '')
+                .filter(Boolean)
+                .join(' ')
+              if (transcript && transcript.trim()) {
+                addUserMessage(transcript.trim())
               }
             }
+          }
+          break
+
+        case 'item.input_audio_transcription.completed':
+          // 다른 형태의 사용자 음성 텍스트 변환 완료 이벤트
+          console.log('🎤 음성 변환 완료 (다른 형태):', data)
+          if (data.transcript && data.transcript.trim()) {
+            addUserMessage(data.transcript.trim())
           }
           break
 
@@ -251,26 +304,7 @@ export default function OpenAIRealtimeVoiceInterview({ sessionNumber, onConversa
         case 'response.done':
           console.log('응답 완료:', data.response)
           setIsAISpeaking(false)
-          
-          // 응답에서 메시지 추출
-          if (data.response?.output && data.response.output.length > 0) {
-            const output = data.response.output[0]
-            if (output.type === 'message' && output.role === 'assistant') {
-              const content = output.content
-              if (content && content.length > 0) {
-                const transcript = content.map((c: any) => c.text || c.transcript || '').filter(Boolean).join(' ')
-                if (transcript) {
-                  const assistantMessage: Conversation = {
-                    role: 'assistant',
-                    content: transcript,
-                    timestamp: new Date(),
-                    audioComplete: true
-                  }
-                  setConversations(prev => [...prev, assistantMessage])
-                }
-              }
-            }
-          }
+          // 메시지 추가는 response.audio_transcript.done에서만 처리하므로 여기서는 제거
           break
 
         case 'error':
@@ -284,7 +318,7 @@ export default function OpenAIRealtimeVoiceInterview({ sessionNumber, onConversa
     } catch (error) {
       console.error('이벤트 처리 오류:', error)
     }
-  }, [onConversationSave])
+  }, [addUserMessage])
 
   const sendMessage = useCallback((message: any) => {
     if (dataChannelRef.current?.readyState === 'open') {
@@ -326,11 +360,20 @@ export default function OpenAIRealtimeVoiceInterview({ sessionNumber, onConversa
     }
   }, [isAISpeaking, sendMessage])
 
+  // 모바일 브라우저 체크
+  const isMobile = typeof window !== 'undefined' && navigator.userAgent.match(/iPhone|iPad|iPod|Android/i)
+  const isIOS = typeof window !== 'undefined' && navigator.userAgent.match(/iPhone|iPad|iPod/i)
+
   return (
     <div className="bg-white rounded-lg shadow-lg p-6">
       <div className="mb-6">
         <h3 className="text-xl font-semibold text-gray-800 mb-2">🎤 OpenAI Realtime 음성 인터뷰</h3>
         <p className="text-gray-600">{connectionStatus}</p>
+        {isMobile && (
+          <p className="text-sm text-amber-600 mt-2">
+            📱 모바일 환경입니다. {isIOS ? 'Safari' : 'Chrome'} 브라우저 사용을 권장합니다.
+          </p>
+        )}
       </div>
 
       {/* 연결 버튼 */}
