@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import VoiceInterview from '@/components/VoiceInterview'
 import TextInterview from '@/components/TextInterview'
 import RealtimeVoiceInterview from '@/components/RealtimeVoiceInterview'
-import WebSpeechVoiceInterview from '@/components/WebSpeechVoiceInterview'
+import SimpleVoiceInterview from '@/components/SimpleVoiceInterview'
 
 interface Conversation {
   id: string
@@ -148,8 +148,8 @@ export default function InterviewPage() {
           </div>
         )}
 
-        {/* 음성 인터뷰 - Web Speech API 사용 */}
-        <WebSpeechVoiceInterview
+        {/* 음성 인터뷰 - 간단한 Web Speech API */}
+        <SimpleVoiceInterview
           sessionNumber={session?.sessionNumber || 1}
           onConversationSave={saveConversation}
         />
