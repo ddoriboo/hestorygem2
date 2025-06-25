@@ -1,0 +1,83 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #000000;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* 다크 모드 비활성화 - 항상 밝은 테마 사용 */
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: 'Noto Sans KR', Arial, sans-serif;
+  font-size: 18px;
+  line-height: 1.6;
+}
+
+/* 전체적인 텍스트 크기 증가 */
+h1 { font-size: 2.5rem !important; }
+h2 { font-size: 2rem !important; }
+h3 { font-size: 1.75rem !important; }
+h4 { font-size: 1.5rem !important; }
+p, li { font-size: 1.125rem !important; }
+
+/* 버튼 크기 증가 */
+button {
+  min-height: 48px;
+  padding: 12px 24px !important;
+  font-size: 1.125rem !important;
+  font-weight: 600;
+}
+
+/* 입력 필드 크기 증가 */
+input, textarea, select {
+  font-size: 1.125rem !important;
+  padding: 12px 16px !important;
+  min-height: 48px;
+}
+
+/* 링크 스타일 개선 */
+a {
+  text-decoration: underline;
+  font-weight: 500;
+}
+
+a:hover {
+  opacity: 0.8;
+}
+
+/* 높은 대비 색상 */
+.text-gray-600 { color: #4a4a4a !important; }
+.text-gray-700 { color: #333333 !important; }
+.text-gray-800 { color: #1a1a1a !important; }
+.text-gray-900 { color: #000000 !important; }
+
+/* 카드 및 섀도우 강화 */
+.shadow { box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15) !important; }
+.shadow-lg { box-shadow: 0 10px 15px rgba(0, 0, 0, 0.2) !important; }
+
+/* 포커스 스타일 강화 */
+*:focus {
+  outline: 3px solid #2563eb !important;
+  outline-offset: 2px;
+}
+
+/* 모바일 반응형 - 더 큰 터치 영역 */
+@media (max-width: 768px) {
+  button {
+    min-height: 56px;
+    font-size: 1.25rem !important;
+  }
+  
+  input, textarea, select {
+    min-height: 56px;
+    font-size: 1.25rem !important;
+  }
+}

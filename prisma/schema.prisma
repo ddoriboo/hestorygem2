@@ -1,0 +1,58 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String    @id @default(cuid())
+  username  String    @unique
+  password  String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  
+  sessions      Session[]
+  conversations Conversation[]
+}
+
+model Session {
+  id           String    @id @default(cuid())
+  sessionNumber Int      // 1-12 세션 번호
+  title        String    // 세션 제목
+  description  String?   // 세션 설명
+  isCompleted  Boolean   @default(false)
+  userId       String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  
+  user         User          @relation(fields: [userId], references: [id])
+  conversations Conversation[]
+  
+  @@unique([userId, sessionNumber])
+}
+
+model Conversation {
+  id        String    @id @default(cuid())
+  sessionId String
+  userId    String
+  question  String    // AI의 질문
+  answer    String?   // 사용자의 답변
+  order     Int       // 대화 순서
+  createdAt DateTime  @default(now())
+  
+  session   Session   @relation(fields: [sessionId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
+  
+  @@index([sessionId, order])
+}
+
+model Autobiography {
+  id        String    @id @default(cuid())
+  userId    String    @unique
+  content   String    @db.Text // 생성된 자서전 내용
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
