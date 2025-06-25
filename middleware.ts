@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { verifyToken } from '@/lib/auth'
 
 export function middleware(request: NextRequest) {
   const token = request.cookies.get('auth-token')?.value
@@ -9,26 +8,21 @@ export function middleware(request: NextRequest) {
   const isApiRoute = request.nextUrl.pathname.startsWith('/api/')
   const isAuthApi = request.nextUrl.pathname.startsWith('/api/auth/')
 
-  // API 라우트 보호
-  if (isApiRoute && !isAuthApi) {
-    if (!token || !verifyToken(token)) {
-      return NextResponse.json(
-        { error: '인증이 필요합니다.' },
-        { status: 401 }
-      )
-    }
+  // 정적 파일과 API 라우트는 처리하지 않음
+  if (isApiRoute) {
+    return NextResponse.next()
   }
 
-  // 페이지 라우트 보호
+  // 페이지 라우트만 보호 (JWT 검증은 각 페이지에서 처리)
   if (!isApiRoute) {
-    if (!token || !verifyToken(token)) {
-      if (!isAuthPage) {
-        return NextResponse.redirect(new URL('/login', request.url))
-      }
-    } else {
-      if (isAuthPage) {
-        return NextResponse.redirect(new URL('/', request.url))
-      }
+    // 토큰이 없고 로그인/회원가입 페이지가 아니라면 로그인으로 리다이렉트
+    if (!token && !isAuthPage) {
+      return NextResponse.redirect(new URL('/login', request.url))
+    }
+    
+    // 토큰이 있고 로그인/회원가입 페이지라면 홈으로 리다이렉트
+    if (token && isAuthPage) {
+      return NextResponse.redirect(new URL('/', request.url))
     }
   }
 
