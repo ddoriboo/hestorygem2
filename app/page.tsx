@@ -21,27 +21,36 @@ export default function HomePage() {
 
   const fetchUserAndSessions = async () => {
     try {
+      console.log('홈페이지 데이터 로딩 시작')
       // 사용자 정보 가져오기
       const userResponse = await fetch('/api/auth/me')
+      console.log('사용자 인증 응답 상태:', userResponse.status)
+      
       if (!userResponse.ok) {
+        console.log('인증 실패, 로그인 페이지로 리다이렉트')
         router.push('/login')
         return
       }
 
       const userData = await userResponse.json()
+      console.log('사용자 데이터:', userData)
       setUser(userData.user)
 
       // 세션 목록 가져오기
       const sessionResponse = await fetch('/api/sessions')
+      console.log('세션 목록 응답 상태:', sessionResponse.status)
+      
       if (sessionResponse.ok) {
         const sessionData = await sessionResponse.json()
+        console.log('세션 데이터:', sessionData)
         setSessions(sessionData.sessions)
       }
     } catch (error) {
-      console.error('Error fetching data:', error)
+      console.error('홈페이지 데이터 로딩 에러:', error)
       router.push('/login')
     } finally {
       setLoading(false)
+      console.log('홈페이지 데이터 로딩 완료')
     }
   }
 

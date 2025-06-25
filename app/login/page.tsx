@@ -15,10 +15,12 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    console.log('로그인 폼 제출 시작:', formData)
     setError('')
     setLoading(true)
 
     try {
+      console.log('API 호출 중...')
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
@@ -27,18 +29,24 @@ export default function LoginPage() {
         body: JSON.stringify(formData),
       })
 
+      console.log('API 응답 상태:', response.status)
       const data = await response.json()
+      console.log('API 응답 데이터:', data)
 
       if (!response.ok) {
+        console.log('로그인 실패:', data.error)
         throw new Error(data.error || '로그인에 실패했습니다.')
       }
 
+      console.log('로그인 성공, 리다이렉트 시작')
       router.push('/')
       router.refresh()
     } catch (err) {
+      console.error('로그인 에러:', err)
       setError(err instanceof Error ? err.message : '로그인 중 오류가 발생했습니다.')
     } finally {
       setLoading(false)
+      console.log('로그인 처리 완료')
     }
   }
 
