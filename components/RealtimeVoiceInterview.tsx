@@ -21,12 +21,13 @@ export default function RealtimeVoiceInterview({ sessionNumber, onConversationSa
   const [connectionStatus, setConnectionStatus] = useState('연결 준비 중...')
   const [currentTranscript, setCurrentTranscript] = useState('')
   const [isAISpeaking, setIsAISpeaking] = useState(false)
+  const [lastTimestamp, setLastTimestamp] = useState(0)
 
-  // WebRTC refs
-  const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
-  const dataChannelRef = useRef<RTCDataChannel | null>(null)
-  const audioElementRef = useRef<HTMLAudioElement | null>(null)
+  // Audio refs
   const localStreamRef = useRef<MediaStream | null>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     return () => {
@@ -38,50 +39,34 @@ export default function RealtimeVoiceInterview({ sessionNumber, onConversationSa
     try {
       setConnectionStatus('OpenAI Realtime API에 연결 중...')
 
-      // 세션 설정 요청
-      const sessionResponse = await fetch('/api/interview/realtime', {
+      // 세션 시작
+      const sessionResponse = await fetch('/api/interview/realtime-polling', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionNumber })
+        body: JSON.stringify({ 
+          sessionNumber, 
+          action: 'start' 
+        })
       })
 
       if (!sessionResponse.ok) {
-        throw new Error('세션 설정에 실패했습니다.')
+        throw new Error('세션 시작에 실패했습니다.')
       }
 
-      const { apiKey, sessionPrompt } = await sessionResponse.json()
+      const { sessionId } = await sessionResponse.json()
+      console.log('세션 시작됨:', sessionId)
 
-      // WebRTC 연결 설정
-      const peerConnection = new RTCPeerConnection()
-      peerConnectionRef.current = peerConnection
-
-      // 오디오 출력 설정
-      const audioElement = document.createElement('audio')
-      audioElement.autoplay = true
-      audioElementRef.current = audioElement
-      
-      // 원격 트랙 처리
-      peerConnection.ontrack = (event) => {
-        console.log('원격 오디오 트랙 수신:', event.streams[0])
-        audioElement.srcObject = event.streams[0]
-      }
-
-      // 로컬 마이크 스트림 설정
+      // 마이크 설정
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ 
           audio: {
             echoCancellation: true,
             noiseSuppression: true,
-            sampleRate: 24000
+            sampleRate: 24000,
+            channelCount: 1
           }
         })
         localStreamRef.current = stream
-        
-        // 오디오 트랙 추가
-        stream.getTracks().forEach(track => {
-          peerConnection.addTrack(track, stream)
-        })
-        
         console.log('마이크 스트림 설정 완료')
       } catch (error) {
         console.error('마이크 액세스 실패:', error)
@@ -89,89 +74,14 @@ export default function RealtimeVoiceInterview({ sessionNumber, onConversationSa
         return
       }
 
-      // 데이터 채널 생성
-      const dataChannel = peerConnection.createDataChannel('oai-events', {
-        ordered: true
-      })
-      dataChannelRef.current = dataChannel
+      setIsConnected(true)
+      setConnectionStatus('음성 인터뷰 준비 완료')
 
-      dataChannel.onopen = () => {
-        console.log('데이터 채널 연결됨')
-        setIsConnected(true)
-        setConnectionStatus('음성 인터뷰 준비 완료')
+      // 메시지 폴링 시작
+      startPolling()
 
-        // 세션 초기화
-        const sessionConfig = {
-          type: 'session.update',
-          session: {
-            instructions: sessionPrompt,
-            voice: 'alloy',
-            input_audio_format: 'pcm16',
-            output_audio_format: 'pcm16',
-            turn_detection: {
-              type: 'server_vad',
-              threshold: 0.5,
-              prefix_padding_ms: 300,
-              silence_duration_ms: 500
-            },
-            temperature: 0.7,
-            max_response_output_tokens: 500
-          }
-        }
-
-        dataChannel.send(JSON.stringify(sessionConfig))
-
-        // 인터뷰 시작을 위한 초기 응답 요청
-        setTimeout(() => {
-          dataChannel.send(JSON.stringify({ type: 'response.create' }))
-        }, 1000)
-      }
-
-      dataChannel.onmessage = handleRealtimeEvent
-      dataChannel.onerror = (error) => {
-        console.error('데이터 채널 오류:', error)
-        setConnectionStatus('연결 오류가 발생했습니다.')
-      }
-
-      dataChannel.onclose = () => {
-        console.log('데이터 채널 연결 해제')
-        setIsConnected(false)
-        setConnectionStatus('연결 해제됨')
-      }
-
-      // ICE 상태 변화 모니터링
-      peerConnection.oniceconnectionstatechange = () => {
-        console.log('ICE 연결 상태:', peerConnection.iceConnectionState)
-        if (peerConnection.iceConnectionState === 'failed') {
-          setConnectionStatus('네트워크 연결에 실패했습니다.')
-        }
-      }
-
-      // SDP Offer 생성
-      const offer = await peerConnection.createOffer()
-      await peerConnection.setLocalDescription(offer)
-
-      // OpenAI Realtime API에 연결
-      const realtimeResponse = await fetch('https://api.openai.com/v1/realtime', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/sdp'
-        },
-        body: offer.sdp
-      })
-
-      if (!realtimeResponse.ok) {
-        throw new Error(`Realtime API 연결 실패: ${realtimeResponse.status}`)
-      }
-
-      const answerSdp = await realtimeResponse.text()
-      await peerConnection.setRemoteDescription({
-        type: 'answer',
-        sdp: answerSdp
-      })
-
-      console.log('OpenAI Realtime API 연결 완료')
+      // 오디오 녹음 설정
+      setupAudioRecording()
 
     } catch (error) {
       console.error('Realtime 연결 오류:', error)
@@ -179,9 +89,134 @@ export default function RealtimeVoiceInterview({ sessionNumber, onConversationSa
     }
   }, [sessionNumber])
 
-  const handleRealtimeEvent = useCallback((event: MessageEvent) => {
+  const startPolling = useCallback(() => {
+    const poll = async () => {
+      if (!isConnected) return
+
+      try {
+        const response = await fetch(`/api/interview/realtime-polling?sessionNumber=${sessionNumber}&lastTimestamp=${lastTimestamp}`)
+        if (!response.ok) return
+
+        const data = await response.json()
+        
+        if (!data.connected) {
+          setIsConnected(false)
+          setConnectionStatus('연결이 끊어졌습니다.')
+          return
+        }
+
+        // 새로운 메시지 처리
+        data.messages.forEach((message: Record<string, unknown>) => {
+          handleRealtimeEvent(message)
+        })
+
+        if (data.lastTimestamp) {
+          setLastTimestamp(data.lastTimestamp)
+        }
+      } catch (error) {
+        console.error('폴링 오류:', error)
+      }
+    }
+
+    // 200ms마다 폴링
+    pollingIntervalRef.current = setInterval(poll, 200)
+  }, [sessionNumber, lastTimestamp, isConnected])
+
+  const setupAudioRecording = useCallback(async () => {
+    if (!localStreamRef.current) return
+
     try {
-      const data = JSON.parse(event.data)
+      // AudioContext 설정
+      const audioContext = new AudioContext({ sampleRate: 24000 })
+      audioContextRef.current = audioContext
+
+      // MediaRecorder 설정
+      const mediaRecorder = new MediaRecorder(localStreamRef.current, {
+        mimeType: 'audio/webm;codecs=opus'
+      })
+      mediaRecorderRef.current = mediaRecorder
+
+      let audioChunks: Blob[] = []
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunks.push(event.data)
+        }
+      }
+
+      mediaRecorder.onstop = async () => {
+        if (audioChunks.length > 0) {
+          const audioBlob = new Blob(audioChunks, { type: 'audio/webm;codecs=opus' })
+          await sendAudioData(audioBlob)
+          audioChunks = []
+        }
+        setIsRecording(false)
+      }
+
+      mediaRecorder.onstart = () => {
+        setIsRecording(true)
+        audioChunks = []
+      }
+
+    } catch (error) {
+      console.error('오디오 녹음 설정 오류:', error)
+    }
+  }, [])
+
+  const sendAudioData = useCallback(async (audioBlob: Blob) => {
+    try {
+      // Convert to base64
+      const arrayBuffer = await audioBlob.arrayBuffer()
+      const audioData = new Uint8Array(arrayBuffer)
+      const base64Audio = btoa(String.fromCharCode(...audioData))
+
+      // Send audio data
+      await fetch('/api/interview/realtime-polling', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionNumber,
+          action: 'send',
+          data: {
+            type: 'input_audio_buffer.append',
+            audio: base64Audio
+          }
+        })
+      })
+
+      // Commit audio buffer
+      await fetch('/api/interview/realtime-polling', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionNumber,
+          action: 'send',
+          data: {
+            type: 'input_audio_buffer.commit'
+          }
+        })
+      })
+
+      // Request response
+      await fetch('/api/interview/realtime-polling', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionNumber,
+          action: 'send',
+          data: {
+            type: 'response.create'
+          }
+        })
+      })
+
+    } catch (error) {
+      console.error('오디오 데이터 전송 오류:', error)
+    }
+  }, [sessionNumber])
+
+  const handleRealtimeEvent = useCallback((data: Record<string, unknown>) => {
+    try {
       console.log('Realtime 이벤트:', data.type, data)
 
       switch (data.type) {
@@ -208,20 +243,27 @@ export default function RealtimeVoiceInterview({ sessionNumber, onConversationSa
 
         case 'response.audio_transcript.delta':
           // AI 응답 텍스트 실시간 업데이트
-          setCurrentTranscript(prev => prev + data.delta)
+          setCurrentTranscript(prev => prev + (data.delta as string))
           break
 
         case 'response.audio_transcript.done':
           // AI 응답 완료
           const assistantMessage: Conversation = {
             role: 'assistant',
-            content: data.transcript,
+            content: data.transcript as string,
             timestamp: new Date(),
             audioComplete: true
           }
           setConversations(prev => [...prev, assistantMessage])
           setCurrentTranscript('')
           setIsAISpeaking(false)
+          break
+
+        case 'response.audio.delta':
+          // AI 응답 오디오 실시간 재생 (base64 PCM16)
+          if (data.delta) {
+            playAudioChunk(data.delta as string)
+          }
           break
 
         case 'input_audio_buffer.speech_started':
@@ -238,7 +280,7 @@ export default function RealtimeVoiceInterview({ sessionNumber, onConversationSa
           // 사용자 음성 텍스트 변환 완료
           const userMessage: Conversation = {
             role: 'user',
-            content: data.transcript,
+            content: data.transcript as string,
             timestamp: new Date()
           }
           setConversations(prev => {
@@ -263,7 +305,7 @@ export default function RealtimeVoiceInterview({ sessionNumber, onConversationSa
 
         case 'error':
           console.error('Realtime API 오류:', data)
-          setConnectionStatus(`오류: ${data.error?.message || '알 수 없는 오류'}`)
+          setConnectionStatus(`오류: ${(data.error as Record<string, unknown>)?.message || '알 수 없는 오류'}`)
           break
 
         default:
@@ -274,43 +316,120 @@ export default function RealtimeVoiceInterview({ sessionNumber, onConversationSa
     }
   }, [onConversationSave])
 
-  const disconnect = useCallback(() => {
+  const playAudioChunk = useCallback(async (audioData: string) => {
+    try {
+      if (!audioContextRef.current) return
+
+      // Base64 디코딩
+      const binaryString = atob(audioData)
+      const len = binaryString.length
+      const bytes = new Uint8Array(len)
+      
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i)
+      }
+
+      // PCM16 to Float32Array
+      const pcmData = new Int16Array(bytes.buffer)
+      const floatData = new Float32Array(pcmData.length)
+      
+      for (let i = 0; i < pcmData.length; i++) {
+        floatData[i] = pcmData[i] / 32768.0
+      }
+
+      // AudioBuffer 생성 및 재생
+      const audioBuffer = audioContextRef.current.createBuffer(1, floatData.length, 24000)
+      audioBuffer.getChannelData(0).set(floatData)
+      
+      const source = audioContextRef.current.createBufferSource()
+      source.buffer = audioBuffer
+      source.connect(audioContextRef.current.destination)
+      source.start()
+      
+    } catch (error) {
+      console.error('오디오 재생 오류:', error)
+    }
+  }, [])
+
+  const disconnect = useCallback(async () => {
     console.log('연결 해제 중...')
 
-    if (dataChannelRef.current) {
-      dataChannelRef.current.close()
-      dataChannelRef.current = null
+    // 폴링 중지
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current)
+      pollingIntervalRef.current = null
     }
 
-    if (peerConnectionRef.current) {
-      peerConnectionRef.current.close()
-      peerConnectionRef.current = null
+    // 녹음 중지
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop()
     }
 
+    // 스트림 해제
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => track.stop())
       localStreamRef.current = null
     }
 
-    if (audioElementRef.current) {
-      audioElementRef.current.srcObject = null
-      audioElementRef.current = null
+    // AudioContext 해제
+    if (audioContextRef.current) {
+      await audioContextRef.current.close()
+      audioContextRef.current = null
+    }
+
+    // 서버 세션 종료
+    try {
+      await fetch('/api/interview/realtime-polling', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionNumber,
+          action: 'close'
+        })
+      })
+    } catch (error) {
+      console.error('세션 종료 오류:', error)
     }
 
     setIsConnected(false)
     setIsRecording(false)
     setIsAISpeaking(false)
     setConnectionStatus('연결 해제됨')
+    setLastTimestamp(0)
+  }, [sessionNumber])
+
+  const interruptAI = useCallback(async () => {
+    if (isAISpeaking) {
+      try {
+        await fetch('/api/interview/realtime-polling', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionNumber,
+            action: 'send',
+            data: {
+              type: 'response.cancel'
+            }
+          })
+        })
+        setIsAISpeaking(false)
+      } catch (error) {
+        console.error('AI 중단 오류:', error)
+      }
+    }
+  }, [isAISpeaking, sessionNumber])
+
+  const startRecording = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'inactive') {
+      mediaRecorderRef.current.start()
+    }
   }, [])
 
-  const interruptAI = useCallback(() => {
-    if (dataChannelRef.current && isAISpeaking) {
-      dataChannelRef.current.send(JSON.stringify({
-        type: 'response.cancel'
-      }))
-      setIsAISpeaking(false)
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop()
     }
-  }, [isAISpeaking])
+  }, [])
 
   return (
     <div className="bg-white rounded-lg shadow-lg p-6">
@@ -347,6 +466,27 @@ export default function RealtimeVoiceInterview({ sessionNumber, onConversationSa
           </>
         )}
       </div>
+
+      {/* 수동 녹음 버튼 */}
+      {isConnected && (
+        <div className="flex justify-center mb-6 space-x-4">
+          {!isRecording ? (
+            <button
+              onClick={startRecording}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+            >
+              🎙️ 수동 녹음 시작
+            </button>
+          ) : (
+            <button
+              onClick={stopRecording}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+            >
+              ⏹️ 녹음 정지
+            </button>
+          )}
+        </div>
+      )}
 
       {/* 음성 상태 표시 */}
       {isConnected && (
@@ -422,6 +562,7 @@ export default function RealtimeVoiceInterview({ sessionNumber, onConversationSa
           <ul className="space-y-1 text-xs">
             <li>• AI가 질문을 하면 자연스럽게 답변해주세요</li>
             <li>• 음성 감지가 자동으로 이루어집니다</li>
+            <li>• 수동 녹음 버튼으로도 녹음할 수 있습니다</li>
             <li>• AI가 말하는 중에도 자연스럽게 대화할 수 있습니다</li>
             <li>• 답변이 길어도 괜찮습니다 - 편안하게 이야기해주세요</li>
           </ul>

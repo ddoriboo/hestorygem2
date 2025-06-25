@@ -1,42 +1,47 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { verifyToken } from '@/lib/auth'
 
 export const runtime = 'nodejs'
 
-// WebSocket 프록시 서버 (실제 구현에서는 별도 서버가 필요할 수 있음)
+// WebSocket 연결을 위한 HTTP 업그레이드 처리
 export async function GET(request: NextRequest) {
-  // WebSocket 업그레이드는 Next.js API Routes에서 직접 지원하지 않음
-  // 대신 간단한 텍스트 기반 인터뷰로 대체 구현을 제공
-
   try {
     const token = request.cookies.get('auth-token')?.value
     if (!token) {
-      return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 })
+      return new Response('Unauthorized', { status: 401 })
     }
 
     const decoded = verifyToken(token)
     if (!decoded) {
-      return NextResponse.json({ error: '유효하지 않은 토큰입니다.' }, { status: 401 })
+      return new Response('Invalid token', { status: 401 })
     }
 
     const url = new URL(request.url)
     const sessionNumber = parseInt(url.searchParams.get('sessionNumber') || '1')
 
     if (sessionNumber < 1 || sessionNumber > 12) {
-      return NextResponse.json({ error: '유효하지 않은 세션 번호입니다.' }, { status: 400 })
+      return new Response('Invalid session number', { status: 400 })
     }
 
-    // 현재는 WebSocket 프록시 대신 HTTP 기반 대화 시스템 사용을 안내
-    return NextResponse.json({
-      message: 'WebSocket 프록시는 현재 개발 중입니다. 텍스트 기반 인터뷰를 사용해주세요.',
-      fallbackUrl: '/api/interview/chat'
+    // WebSocket 업그레이드 헤더 확인
+    const upgrade = request.headers.get('upgrade')
+    if (upgrade !== 'websocket') {
+      return new Response('Expected WebSocket upgrade', { status: 400 })
+    }
+
+    // Next.js의 경우 WebSocket 업그레이드를 직접 처리할 수 없으므로
+    // 클라이언트에게 올바른 연결 정보를 제공
+    return new Response(JSON.stringify({
+      error: 'WebSocket upgrade not supported in Next.js API routes',
+      suggestion: 'Use polling-based communication instead',
+      endpoint: '/api/interview/realtime-polling'
+    }), {
+      status: 501,
+      headers: { 'Content-Type': 'application/json' }
     })
 
   } catch (error) {
-    console.error('WebSocket 프록시 오류:', error)
-    return NextResponse.json(
-      { error: '연결 설정 중 오류가 발생했습니다.' },
-      { status: 500 }
-    )
+    console.error('WebSocket 처리 오류:', error)
+    return new Response('Server error', { status: 500 })
   }
 }
