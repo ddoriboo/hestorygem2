@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import VoiceInterview from '@/components/VoiceInterview'
 import TextInterview from '@/components/TextInterview'
 import RealtimeVoiceInterview from '@/components/RealtimeVoiceInterview'
-import SimpleVoiceInterview from '@/components/SimpleVoiceInterview'
+import OpenAIRealtimeVoiceInterview from '@/components/OpenAIRealtimeVoiceInterview'
 
 interface Conversation {
   id: string
@@ -148,8 +148,8 @@ export default function InterviewPage() {
           </div>
         )}
 
-        {/* 음성 인터뷰 - 간단한 Web Speech API */}
-        <SimpleVoiceInterview
+        {/* OpenAI Realtime API 음성 인터뷰 */}
+        <OpenAIRealtimeVoiceInterview
           sessionNumber={session?.sessionNumber || 1}
           onConversationSave={saveConversation}
         />
@@ -166,10 +166,10 @@ export default function InterviewPage() {
         <div className="mt-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
           <h4 className="text-lg font-semibold text-gray-800 mb-2">🔧 개발자 도구</h4>
           <details className="text-sm text-gray-600">
-            <summary className="cursor-pointer font-medium">이전 버전 컴포넌트들 (참고용)</summary>
+            <summary className="cursor-pointer font-medium">대안 인터뷰 방식들</summary>
             <div className="mt-4 space-y-4">
               <div className="p-3 bg-gray-100 rounded">
-                <h5 className="font-medium text-gray-700 mb-2">실시간 음성 인터뷰 컴포넌트 (서버 이슈):</h5>
+                <h5 className="font-medium text-gray-700 mb-2">이전 WebSocket 기반 컴포넌트 (서버 이슈로 제거됨):</h5>
                 <RealtimeVoiceInterview
                   sessionNumber={session?.sessionNumber || 1}
                   onConversationSave={saveConversation}
