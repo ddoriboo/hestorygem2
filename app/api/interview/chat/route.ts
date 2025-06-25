@@ -31,8 +31,18 @@ export async function POST(request: NextRequest) {
     // 세션 프롬프트 가져오기
     const sessionPrompt = getSessionPrompt(sessionNumber)
 
+    interface OpenAIMessage {
+      role: 'system' | 'user' | 'assistant'
+      content: string
+    }
+
+    interface ConversationItem {
+      role: 'user' | 'assistant'
+      content: string
+    }
+
     // 대화 기록을 OpenAI 메시지 형식으로 변환
-    const messages: any[] = [
+    const messages: OpenAIMessage[] = [
       {
         role: 'system',
         content: sessionPrompt
@@ -40,7 +50,7 @@ export async function POST(request: NextRequest) {
     ]
 
     // 기존 대화 기록 추가
-    conversationHistory.forEach((conv: any) => {
+    conversationHistory.forEach((conv: ConversationItem) => {
       messages.push({
         role: conv.role === 'assistant' ? 'assistant' : 'user',
         content: conv.content

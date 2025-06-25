@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { getSessionPrompt } from '@/lib/session-prompts'
 import VoiceInterview from '@/components/VoiceInterview'
 import TextInterview from '@/components/TextInterview'
+import RealtimeVoiceInterview from '@/components/RealtimeVoiceInterview'
 
 interface Conversation {
   id: string
@@ -149,25 +149,31 @@ export default function InterviewPage() {
 
         {/* AI 인터뷰 컴포넌트 - 텍스트 기반 (음성은 개발 중) */}
         <TextInterview
-          sessionId={sessionId}
           sessionNumber={session?.sessionNumber || 1}
           onConversationSave={saveConversation}
         />
         
-        {/* 음성 인터뷰 (개발 중) */}
-        <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <h4 className="text-lg font-semibold text-yellow-800 mb-2">🎤 음성 인터뷰 (개발 중)</h4>
-          <p className="text-yellow-700 mb-4">
-            음성 기반 인터뷰 기능은 현재 개발 중입니다. 지금은 텍스트 기반 인터뷰를 이용해주세요.
-          </p>
-          <details className="text-sm text-yellow-600">
-            <summary className="cursor-pointer font-medium">음성 인터뷰 컴포넌트 (테스트용)</summary>
-            <div className="mt-2 p-2 bg-yellow-100 rounded">
-              <VoiceInterview
-                sessionId={sessionId}
-                sessionNumber={session?.sessionNumber || 1}
-                onConversationSave={saveConversation}
-              />
+        {/* 실시간 음성 인터뷰 */}
+        <div className="mt-6">
+          <RealtimeVoiceInterview
+            sessionNumber={session?.sessionNumber || 1}
+            onConversationSave={saveConversation}
+          />
+        </div>
+
+        {/* 개발용 컴포넌트들 */}
+        <div className="mt-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+          <h4 className="text-lg font-semibold text-gray-800 mb-2">🔧 개발자 도구</h4>
+          <details className="text-sm text-gray-600">
+            <summary className="cursor-pointer font-medium">이전 버전 컴포넌트들 (참고용)</summary>
+            <div className="mt-4 space-y-4">
+              <div className="p-3 bg-gray-100 rounded">
+                <h5 className="font-medium text-gray-700 mb-2">기본 음성 인터뷰 컴포넌트:</h5>
+                <VoiceInterview
+                  sessionNumber={session?.sessionNumber || 1}
+                  onConversationSave={saveConversation}
+                />
+              </div>
             </div>
           </details>
         </div>

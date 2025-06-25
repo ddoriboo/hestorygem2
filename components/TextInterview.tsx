@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from 'react'
 
 interface TextInterviewProps {
-  sessionId: string
   sessionNumber: number
   onConversationSave: (question: string, answer: string) => Promise<void>
 }
@@ -14,9 +13,8 @@ interface Conversation {
   timestamp: Date
 }
 
-export default function TextInterview({ sessionId, sessionNumber, onConversationSave }: TextInterviewProps) {
+export default function TextInterview({ sessionNumber, onConversationSave }: TextInterviewProps) {
   const [conversations, setConversations] = useState<Conversation[]>([])
-  const [currentMessage, setCurrentMessage] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isStarted, setIsStarted] = useState(false)
   const [userInput, setUserInput] = useState('')
@@ -25,7 +23,7 @@ export default function TextInterview({ sessionId, sessionNumber, onConversation
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [conversations, currentMessage])
+  }, [conversations])
 
   const startInterview = async () => {
     setIsLoading(true)

@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { WebSocket } from 'ws'
 import { verifyToken } from '@/lib/auth'
-import { getSessionPrompt } from '@/lib/session-prompts'
 
 export const runtime = 'nodejs'
 

@@ -1,10 +1,8 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { getSessionPrompt } from '@/lib/session-prompts'
 
 interface VoiceInterviewProps {
-  sessionId: string
   sessionNumber: number
   onConversationSave: (question: string, answer: string) => Promise<void>
 }
@@ -15,7 +13,7 @@ interface Conversation {
   timestamp: Date
 }
 
-export default function VoiceInterview({ sessionId, sessionNumber, onConversationSave }: VoiceInterviewProps) {
+export default function VoiceInterview({ sessionNumber, onConversationSave }: VoiceInterviewProps) {
   const [isConnected, setIsConnected] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
   const [conversations, setConversations] = useState<Conversation[]>([])
