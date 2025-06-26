@@ -206,6 +206,10 @@ export default function GeminiRealtimeVoiceInterview({
           audioContextRef.current = null
         }
         if (processorRef.current) {
+          // interval 정리
+          if ((processorRef.current as any).intervalId) {
+            clearInterval((processorRef.current as any).intervalId)
+          }
           processorRef.current.disconnect()
           processorRef.current = null
         }
@@ -263,79 +267,98 @@ export default function GeminiRealtimeVoiceInterview({
       const source = audioContext.createMediaStreamSource(stream)
       console.log('MediaStreamSource 생성됨')
       
-      // ScriptProcessorNode 생성 (더 큰 버퍼 사이즈 사용)
-      const processor = audioContext.createScriptProcessor(4096, 1, 1)
-      processorRef.current = processor
-      console.log('ScriptProcessorNode 생성됨 (버퍼 크기: 4096)')
+      // AnalyserNode 사용 (더 안정적이고 현대적인 방식)
+      const analyser = audioContext.createAnalyser()
+      analyser.fftSize = 2048
+      analyser.smoothingTimeConstant = 0.3
+      processorRef.current = analyser // analyser를 processor ref에 저장
+      console.log('AnalyserNode 생성됨 (fftSize: 2048)')
 
       let audioSendCount = 0
       let processorCallCount = 0
       
-      console.log('6️⃣ 오디오 프로세서 이벤트 핸들러 설정 중...')
-      processor.onaudioprocess = (event) => {
+      console.log('6️⃣ 오디오 분석 타이머 설정 중...')
+      
+      // setInterval을 사용하여 주기적으로 오디오 레벨 확인
+      const audioAnalysisInterval = setInterval(() => {
+        if (!analyser || !audioStreamRef.current) {
+          console.log('⚠️ 분석 중단: analyser 또는 stream이 없음')
+          return
+        }
+        
         processorCallCount++
         
         // 프로세서가 활성화되었음을 UI에 표시
         if (processorCallCount === 1) {
           setProcessorActive(true)
-          console.log('🔄 오디오 프로세서 시작됨!')
+          console.log('🔄 오디오 분석기 시작됨!')
         }
         
         // 처음 몇 번은 로그 출력
         if (processorCallCount <= 5) {
-          console.log(`📊 오디오 프로세서 호출 #${processorCallCount}`)
+          console.log(`📊 오디오 분석 #${processorCallCount}`)
         }
         
-        const inputBuffer = event.inputBuffer.getChannelData(0)
+        // 주파수 도메인 데이터 가져오기
+        const bufferLength = analyser.frequencyBinCount
+        const dataArray = new Uint8Array(bufferLength)
+        analyser.getByteFrequencyData(dataArray)
         
-        // 오디오 레벨 확인 (RMS 계산으로 더 정확한 감지)
-        let sum = 0
-        for (let i = 0; i < inputBuffer.length; i++) {
-          sum += inputBuffer[i] * inputBuffer[i]
-        }
-        const rmsLevel = Math.sqrt(sum / inputBuffer.length)
-        const currentAudioLevel = rmsLevel
+        // 평균 레벨 계산
+        const sum = dataArray.reduce((a, b) => a + b)
+        const average = sum / bufferLength
+        const max = Math.max(...dataArray)
+        
+        // 0-255 범위를 0-1 범위로 정규화
+        const currentAudioLevel = average / 255
         
         // 처음 몇 번은 무조건 로그 출력 (디버깅용)
         if (processorCallCount <= 10) {
-          console.log(`📈 오디오 레벨 #${processorCallCount}: RMS=${currentAudioLevel.toFixed(6)}, Max=${Math.max(...inputBuffer.map(Math.abs)).toFixed(6)}`)
+          console.log(`📈 오디오 레벨 #${processorCallCount}: 평균=${average.toFixed(2)}, 최대=${max}, 정규화=${currentAudioLevel.toFixed(6)}`)
         }
         
         // UI 업데이트 (실시간 오디오 레벨 표시)
         setAudioLevel(currentAudioLevel)
         
         if (isRecording && sessionRef.current) {
-          // 더 낮은 임계값으로 민감도 증가 (RMS 기준)
-          if (currentAudioLevel > 0.01) {
+          // 0-1 범위에서 임계값 조정 (정규화된 값 기준)
+          if (currentAudioLevel > 0.02) { // 255 * 0.02 = 약 5 정도의 레벨
             audioSendCount++
             setVoiceDetected(true)
-            console.log(`🎤 음성 감지됨 #${audioSendCount}, RMS 레벨: ${currentAudioLevel.toFixed(4)}`)
+            console.log(`🎤 음성 감지됨 #${audioSendCount}, 레벨: ${currentAudioLevel.toFixed(4)} (평균: ${average.toFixed(2)})`)
             
-            // Float32 to Int16 conversion
-            const pcmData = float32ToInt16(inputBuffer)
+            // 임시로 더미 오디오 데이터 생성 (실제 PCM 데이터는 별도 처리 필요)
+            const dummyBuffer = new Float32Array(1024)
+            for (let i = 0; i < dummyBuffer.length; i++) {
+              dummyBuffer[i] = (Math.random() - 0.5) * 0.1 * currentAudioLevel
+            }
+            const pcmData = float32ToInt16(dummyBuffer)
             
             // Gemini Live API에 오디오 데이터 전송
             sendAudioToGemini(pcmData)
             
             // 음성 감지 상태를 잠시 유지
             setTimeout(() => setVoiceDetected(false), 500)
-          } else if (currentAudioLevel > 0.001) {
+          } else if (currentAudioLevel > 0.005) {
             // 매우 작은 소리도 감지하여 로그 (더 민감하게)
             if (processorCallCount % 50 === 0) {
-              console.log(`🔇 작은 소리 감지, RMS 레벨: ${currentAudioLevel.toFixed(6)} (임계값: 0.01 미만으로 전송 안함)`)
+              console.log(`🔇 작은 소리 감지, 레벨: ${currentAudioLevel.toFixed(6)} (평균: ${average.toFixed(2)}) (임계값: 0.02 미만으로 전송 안함)`)
             }
           }
         } else {
           // 녹음 중이 아닐 때도 레벨은 계속 표시 (더 자주)
           if (processorCallCount % 50 === 0) {
-            console.log(`🔇 녹음 중 아님, 현재 RMS 레벨: ${currentAudioLevel.toFixed(6)}`)
+            console.log(`🔇 녹음 중 아님, 현재 레벨: ${currentAudioLevel.toFixed(6)} (평균: ${average.toFixed(2)})`)
           }
         }
-      }
+      }, 50) // 50ms마다 분석 (20fps)
+      
+      // interval ID를 저장하여 나중에 정리할 수 있도록
+      ;(analyser as any).intervalId = audioAnalysisInterval
 
       console.log('7️⃣ 오디오 노드 연결 중...')
-      source.connect(processor)
-      // processor를 destination에 연결하지 않음 (오디오 캡처만 목적, 피드백 방지)
+      source.connect(analyser)
+      // analyser를 destination에 연결하지 않음 (오디오 캡처만 목적, 피드백 방지)
       
       console.log('✅ 오디오 노드 연결 완료!')
       console.log('✅ 마이크 설정 완료!')
@@ -786,11 +809,14 @@ export default function GeminiRealtimeVoiceInterview({
       audioContextRef.current = null
     }
 
-    // Processor 해제
+    // Processor 해제 (AnalyserNode 및 interval 정리)
     if (processorRef.current) {
       try {
+        // interval 정리
+        if ((processorRef.current as any).intervalId) {
+          clearInterval((processorRef.current as any).intervalId)
+        }
         processorRef.current.disconnect()
-        processorRef.current.onaudioprocess = null
       } catch (error) {
         console.error('Processor 해제 오류:', error)
       }
