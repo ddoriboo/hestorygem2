@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { verifyToken } from '@/lib/auth'
-import OpenAI from 'openai'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 
 export const runtime = 'nodejs'
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '')
 
 export async function POST(request: NextRequest) {
   try {
@@ -56,13 +54,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // ChatGPT API 호출
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4-turbo-preview",
-      messages: [
-        {
-          role: "system",
-          content: `너는 따뜻한 문체를 가진 자서전 작가야. 주어진 인터뷰 기록을 바탕으로 아름답고 감동적인 자서전을 작성해야 해. 
+    // Gemini API 호출
+    const model = genAI.getGenerativeModel({ 
+      model: "gemini-2.0-flash-exp",
+      generationConfig: {
+        temperature: 0.7,
+        topP: 0.9,
+        maxOutputTokens: 4000,
+      }
+    })
+
+    const systemPrompt = `너는 따뜻한 문체를 가진 자서전 작가야. 주어진 인터뷰 기록을 바탕으로 아름답고 감동적인 자서전을 작성해야 해. 
 
 작성 지침:
 1. 1인칭 시점으로 작성 (나는, 내가 등)
@@ -72,17 +74,16 @@ export async function POST(request: NextRequest) {
 5. 각 장(Chapter)은 의미 있는 제목을 가지도록 구성
 6. 전체적으로 따뜻하고 희망적인 톤 유지
 7. 한국어로 작성`
-        },
-        {
-          role: "user",
-          content: `다음은 한 사람의 인생 인터뷰 기록입니다. 이를 바탕으로 감동적인 자서전 초고를 작성해주세요:\n\n${conversationText}`
-        }
-      ],
-      temperature: 0.7,
-      max_tokens: 4000,
-    })
 
-    const autobiographyContent = completion.choices[0].message.content || ''
+    const userPrompt = `다음은 한 사람의 인생 인터뷰 기록입니다. 이를 바탕으로 감동적인 자서전 초고를 작성해주세요:\n\n${conversationText}`
+
+    const result = await model.generateContent([
+      { text: systemPrompt },
+      { text: userPrompt }
+    ])
+
+    const response = await result.response
+    const autobiographyContent = response.text()
 
     // 자서전 저장 또는 업데이트
     const existingAutobiography = await prisma.autobiography.findUnique({

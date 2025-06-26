@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken } from '@/lib/auth'
 import { getSessionPrompt } from '@/lib/session-prompts'
-import OpenAI from 'openai'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 
 export const runtime = 'nodejs'
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '')
 
 export async function POST(request: NextRequest) {
   try {
@@ -31,51 +29,39 @@ export async function POST(request: NextRequest) {
     // 세션 프롬프트 가져오기
     const sessionPrompt = getSessionPrompt(sessionNumber)
 
-    interface OpenAIMessage {
-      role: 'system' | 'user' | 'assistant'
-      content: string
-    }
-
     interface ConversationItem {
       role: 'user' | 'assistant'
       content: string
     }
 
-    // 대화 기록을 OpenAI 메시지 형식으로 변환
-    const messages: OpenAIMessage[] = [
-      {
-        role: 'system',
-        content: sessionPrompt
+    // Gemini 모델 초기화
+    const model = genAI.getGenerativeModel({ 
+      model: "gemini-2.0-flash-exp",
+      generationConfig: {
+        temperature: 0.8,
+        topP: 0.9,
+        maxOutputTokens: 500,
       }
-    ]
-
-    // 기존 대화 기록 추가
-    conversationHistory.forEach((conv: ConversationItem) => {
-      messages.push({
-        role: conv.role === 'assistant' ? 'assistant' : 'user',
-        content: conv.content
-      })
     })
 
-    // 사용자 메시지 추가 (있을 경우)
-    if (userMessage) {
-      messages.push({
-        role: 'user',
-        content: userMessage
-      })
-    }
+    // 대화 히스토리를 Gemini 형식으로 변환
+    const history = conversationHistory.map((conv: ConversationItem) => ({
+      role: conv.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: conv.content }]
+    }))
 
-    console.log('OpenAI API 호출 중:', { sessionNumber, messageCount: messages.length })
+    console.log('Gemini API 호출 중:', { sessionNumber, historyCount: history.length })
 
-    // OpenAI API 호출
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini', // 음성이 아닌 텍스트 모델 사용
-      messages,
-      temperature: 0.7,
-      max_tokens: 500
+    // Gemini 채팅 시작
+    const chat = model.startChat({
+      history,
+      systemInstruction: sessionPrompt
     })
 
-    const aiResponse = completion.choices[0].message.content || ''
+    // Gemini API 호출
+    const result = await chat.sendMessage(userMessage || "대화를 시작해주세요.")
+    const response = await result.response
+    const aiResponse = response.text()
 
     console.log('AI 응답 생성 완료')
 
