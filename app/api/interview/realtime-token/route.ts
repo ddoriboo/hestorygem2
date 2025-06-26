@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken } from '@/lib/auth'
+import { getSessionPrompt } from '@/lib/session-prompts'
 
 export const runtime = 'nodejs'
 
@@ -27,18 +28,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'OpenAI API 키가 설정되지 않았습니다.' }, { status: 500 })
     }
 
-    // 세션별 프롬프트
-    const sessionPrompt = `당신은 노인 분들의 인생 이야기를 듣는 친근한 AI 인터뷰어입니다. 
-세션 ${sessionNumber}에 맞는 질문을 하세요.
-
-대화 규칙:
-- 자연스럽고 따뜻한 대화를 나누세요
-- 한 번에 하나의 질문만 하세요  
-- 응답을 충분히 들어주세요
-- 추가 질문으로 더 깊이 있는 이야기를 이끌어내세요
-- 존댓말을 사용하고 "아버님" 또는 "어머님"으로 호칭하세요
-
-첫 인사를 시작해주세요.`
+    // 세션별 상세 프롬프트 사용
+    const sessionPrompt = getSessionPrompt(sessionNumber)
 
     // OpenAI API 키와 설정을 클라이언트에 안전하게 전달
     // (실제 세션 생성은 클라이언트에서 WebRTC 연결 시 진행)

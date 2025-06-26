@@ -127,13 +127,42 @@ export default function OpenAIRealtimeVoiceInterview({ sessionNumber, onConversa
       dataChannel.onopen = () => {
         console.log('데이터 채널 연결됨')
         setIsConnected(true)
-        setConnectionStatus('음성 인터뷰 준비 완료')
-        setIsRecording(true)
+        setConnectionStatus('세션 설정 중...')
 
-        // 첫 번째 응답 요청
+        // 1. 세션 설정: 음성 전사 활성화 및 시스템 프롬프트 설정
+        const sessionUpdateMessage = {
+          type: 'session.update',
+          session: {
+            instructions: sessionPrompt,
+            voice: voice,
+            input_audio_format: 'pcm16',
+            output_audio_format: 'pcm16',
+            input_audio_transcription: {
+              model: 'whisper-1'
+            },
+            turn_detection: {
+              type: 'server_vad',
+              threshold: 0.5,
+              prefix_padding_ms: 300,
+              silence_duration_ms: 200
+            },
+            tools: [],
+            tool_choice: 'auto',
+            temperature: 0.8,
+            max_response_output_tokens: 4096
+          }
+        }
+
+        console.log('세션 설정 메시지 전송:', sessionUpdateMessage)
+        dataChannel.send(JSON.stringify(sessionUpdateMessage))
+
+        // 2. 잠시 대기 후 첫 번째 응답 요청
         setTimeout(() => {
+          setConnectionStatus('음성 인터뷰 준비 완료')
+          setIsRecording(true)
+          console.log('첫 번째 응답 요청 전송')
           sendMessage({ type: 'response.create' })
-        }, 1000)
+        }, 1500)
       }
 
       dataChannel.onmessage = handleRealtimeEvent
