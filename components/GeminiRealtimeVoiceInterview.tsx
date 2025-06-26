@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { float32ToInt16, int16ToFloat32 } from '@/lib/audio-utils'
+import { GeminiLiveClient } from '@/lib/gemini-live'
 
 interface GeminiRealtimeVoiceInterviewProps {
   sessionNumber: number
@@ -26,7 +27,7 @@ export default function GeminiRealtimeVoiceInterview({
   const [isAISpeaking, setIsAISpeaking] = useState(false)
 
   // Session and Audio refs
-  const sessionIdRef = useRef<string | null>(null)
+  const geminiClientRef = useRef<GeminiLiveClient | null>(null)
   const audioStreamRef = useRef<MediaStream | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const processorRef = useRef<ScriptProcessorNode | null>(null)
@@ -41,40 +42,34 @@ export default function GeminiRealtimeVoiceInterview({
     try {
       setConnectionStatus('Gemini Live API 연결 중...')
 
-      // 세션 ID 생성
-      const sessionId = `gemini-${Date.now()}`
-      sessionIdRef.current = sessionId
-      
+      // API 설정 가져오기
+      const configResponse = await fetch(`/api/gemini/live-websocket?sessionNumber=${sessionNumber}`)
+      if (!configResponse.ok) {
+        throw new Error('API 설정 가져오기 실패')
+      }
+      const config = await configResponse.json()
+
+      // Gemini Live 클라이언트 초기화
+      const client = new GeminiLiveClient(config.apiKey)
+      geminiClientRef.current = client
+
+      // 메시지 핸들러 설정
+      client.onMessage((response) => {
+        handleGeminiResponse(response)
+      })
+
+      // 연결
+      await client.connect({
+        model: config.model,
+        systemPrompt: config.sessionPrompt,
+        responseModalities: ['AUDIO', 'TEXT']
+      })
+
       // 오디오 설정
       await setupAudioCapture()
-      
-      // Server-Sent Events 연결
-      const eventSource = new EventSource(`/api/gemini/live-websocket?sessionId=${sessionId}&sessionNumber=${sessionNumber}`)
-      
-      eventSource.onopen = () => {
-        console.log('Gemini Live SSE 연결됨')
-        setIsConnected(true)
-        setConnectionStatus('음성 인터뷰 준비 완료')
-      }
 
-      eventSource.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data)
-          handleGeminiResponse(data)
-        } catch (error) {
-          console.error('SSE 메시지 파싱 오류:', error)
-        }
-      }
-
-      eventSource.onerror = (error) => {
-        console.error('SSE 연결 오류:', error)
-        setConnectionStatus('연결 오류 발생')
-        eventSource.close()
-        setIsConnected(false)
-      }
-
-      // cleanup 함수에서 사용할 수 있도록 ref에 저장
-      ;(sessionIdRef as any).eventSource = eventSource
+      setIsConnected(true)
+      setConnectionStatus('음성 인터뷰 준비 완료')
 
     } catch (error) {
       console.error('Gemini 연결 오류:', error)
@@ -105,14 +100,14 @@ export default function GeminiRealtimeVoiceInterview({
       processorRef.current = processor
 
       processor.onaudioprocess = (event) => {
-        if (isRecording && sessionIdRef.current) {
+        if (isRecording && geminiClientRef.current) {
           const inputBuffer = event.inputBuffer.getChannelData(0)
           
           // Float32 to Int16 conversion using utility
           const pcmData = float32ToInt16(inputBuffer)
 
           // Gemini Live API에 오디오 데이터 전송
-          sendAudioToGemini(Array.from(pcmData))
+          sendAudioToGemini(pcmData)
         }
       }
 
@@ -127,23 +122,11 @@ export default function GeminiRealtimeVoiceInterview({
     }
   }
 
-  const sendAudioToGemini = async (audioData: number[]) => {
-    if (!sessionIdRef.current) return
+  const sendAudioToGemini = async (audioData: Int16Array) => {
+    if (!geminiClientRef.current) return
     
     try {
-      const response = await fetch('/api/gemini/live-websocket', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'sendAudio',
-          sessionId: sessionIdRef.current,
-          audioData
-        })
-      })
-      
-      if (!response.ok) {
-        console.error('오디오 전송 실패:', response.statusText)
-      }
+      await geminiClientRef.current.sendAudio(audioData)
     } catch (error) {
       console.error('오디오 전송 오류:', error)
     }
@@ -239,28 +222,14 @@ export default function GeminiRealtimeVoiceInterview({
   const disconnect = useCallback(async () => {
     console.log('Gemini 연결 해제 중...')
 
-    // EventSource 해제
-    const eventSource = (sessionIdRef as any).eventSource
-    if (eventSource) {
-      eventSource.close()
-      ;(sessionIdRef as any).eventSource = null
-    }
-
-    // 세션 종료
-    if (sessionIdRef.current) {
+    // Gemini 클라이언트 해제
+    if (geminiClientRef.current) {
       try {
-        await fetch('/api/gemini/live-websocket', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'disconnect',
-            sessionId: sessionIdRef.current
-          })
-        })
+        await geminiClientRef.current.disconnect()
       } catch (error) {
-        console.error('세션 종료 오류:', error)
+        console.error('Gemini 클라이언트 종료 오류:', error)
       }
-      sessionIdRef.current = null
+      geminiClientRef.current = null
     }
 
     // 오디오 스트림 해제

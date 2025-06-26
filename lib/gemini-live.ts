@@ -1,20 +1,29 @@
 // Gemini Live API 클라이언트 (공식 가이드 기반)
 export class GeminiLiveClient {
-  private ai: any
+  private ai: any = null
   private session: any = null
   private isConnected = false
   private responseQueue: any[] = []
   private messageHandlers: ((data: any) => void)[] = []
+  private apiKey: string
+  private initialized = false
 
   constructor(apiKey: string) {
-    // 동적 import로 클라이언트 사이드에서만 초기화
-    this.initializeAI(apiKey)
+    this.apiKey = apiKey
   }
 
-  private async initializeAI(apiKey: string) {
-    if (typeof window !== 'undefined') {
+  private async ensureInitialized() {
+    if (this.initialized || typeof window === 'undefined') {
+      return
+    }
+    
+    try {
       const { GoogleGenAI } = await import('@google/genai')
-      this.ai = new GoogleGenAI({ apiKey })
+      this.ai = new GoogleGenAI({ apiKey: this.apiKey })
+      this.initialized = true
+    } catch (error) {
+      console.error('Failed to initialize Gemini AI:', error)
+      throw error
     }
   }
 
@@ -53,14 +62,16 @@ export class GeminiLiveClient {
     responseModalities?: string[]
   }): Promise<void> {
     try {
+      // 먼저 초기화 확인
+      await this.ensureInitialized()
+      
+      if (!this.ai) {
+        throw new Error('Gemini AI 초기화 실패')
+      }
+
       const model = config.model || 'gemini-2.5-flash-preview-native-audio-dialog'
       
       console.log('Gemini Live 연결 시도:', model)
-      
-      // AI 초기화 확인
-      if (!this.ai) {
-        await this.initializeAI(process.env.GOOGLE_API_KEY || '')
-      }
 
       // Modality 동적 import
       const { Modality } = await import('@google/genai')
@@ -120,6 +131,8 @@ export class GeminiLiveClient {
   }
 
   async sendAudio(audioData: Int16Array) {
+    await this.ensureInitialized()
+    
     if (!this.isConnected || !this.session) {
       throw new Error('Gemini Live 세션이 연결되지 않음')
     }
@@ -143,6 +156,8 @@ export class GeminiLiveClient {
   }
 
   async sendText(text: string) {
+    await this.ensureInitialized()
+    
     if (!this.isConnected || !this.session) {
       throw new Error('Gemini Live 세션이 연결되지 않음')
     }
