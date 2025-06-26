@@ -108,3 +108,10 @@ NEXTAUTH_URL="http://localhost:3000"
 - AI interviewer uses respectful Korean language patterns
 - Conversations are automatically saved and can be compiled into autobiography
 - Supports both synchronous (real-time) and asynchronous interview modes
+
+### Recent UX Improvements
+- **Auto-save conversations**: Real-time saving with error handling, no data loss
+- **Session preview popup**: Click session titles to preview questions before starting
+- **Mobile-optimized UI**: Responsive design with proper text sizes and touch targets
+- **Voice transcription**: OpenAI Whisper integration for user voice-to-text conversion
+- **Proper session prompts**: Uses getSessionPrompt() for detailed Korean interview guidance

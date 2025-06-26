@@ -55,16 +55,18 @@ export default function OpenAIRealtimeVoiceInterview({ sessionNumber, onConversa
 
       // 마이크 설정 (모바일 호환성 개선)
       try {
-        // 모바일에서도 호환되는 간단한 constraints 사용
+        // 한국어 음성 인식에 최적화된 오디오 설정
         const audioConstraints = {
           audio: {
             echoCancellation: true,
             noiseSuppression: true,
             autoGainControl: true,
-            // 모바일에서 문제가 될 수 있는 설정들 제거
+            // 한국어 음성 인식 품질 향상을 위한 설정
             ...(typeof window !== 'undefined' && !navigator.userAgent.match(/iPhone|iPad|iPod|Android/i) && {
               sampleRate: 24000,
-              channelCount: 1
+              channelCount: 1,
+              latency: 0.01,  // 낮은 지연시간
+              volume: 1.0     // 적절한 볼륨
             })
           }
         }
@@ -133,18 +135,20 @@ export default function OpenAIRealtimeVoiceInterview({ sessionNumber, onConversa
         const sessionUpdateMessage = {
           type: 'session.update',
           session: {
+            modalities: ['text', 'audio'],
             instructions: sessionPrompt,
             voice: voice,
             input_audio_format: 'pcm16',
             output_audio_format: 'pcm16',
             input_audio_transcription: {
-              model: 'whisper-1'
+              model: 'whisper-1',
+              language: 'ko'
             },
             turn_detection: {
               type: 'server_vad',
               threshold: 0.5,
               prefix_padding_ms: 300,
-              silence_duration_ms: 200
+              silence_duration_ms: 500
             },
             tools: [],
             tool_choice: 'auto',
