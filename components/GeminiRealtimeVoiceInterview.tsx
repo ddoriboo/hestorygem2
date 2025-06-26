@@ -25,6 +25,7 @@ export default function GeminiRealtimeVoiceInterview({
   const [isAISpeaking, setIsAISpeaking] = useState(false)
   const [audioLevel, setAudioLevel] = useState(0)
   const [voiceDetected, setVoiceDetected] = useState(false)
+  const [processorActive, setProcessorActive] = useState(false)
 
   // Refs
   const sessionRef = useRef<any>(null)
@@ -158,6 +159,8 @@ export default function GeminiRealtimeVoiceInterview({
 
   const setupAudioCapture = async () => {
     try {
+      console.log('🎤 마이크 권한 요청 중...')
+      
       // 마이크 권한 요청
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -168,34 +171,84 @@ export default function GeminiRealtimeVoiceInterview({
         }
       })
       
+      console.log('✅ 마이크 권한 허용됨')
+      console.log('🔍 오디오 스트림 정보:', {
+        활성트랙수: stream.getAudioTracks().length,
+        트랙상태: stream.getAudioTracks().map(track => ({
+          라벨: track.label,
+          활성화: track.enabled,
+          준비상태: track.readyState
+        }))
+      })
+      
       audioStreamRef.current = stream
 
-      // AudioContext 설정
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({
+      // AudioContext 설정 (브라우저 호환성)
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
+      const audioContext = new AudioContextClass({
         sampleRate: 16000
       })
+      
+      console.log('🔊 AudioContext 상태:', audioContext.state)
+      
+      // AudioContext가 suspended 상태면 resume
+      if (audioContext.state === 'suspended') {
+        console.log('⏯️ AudioContext resume 중...')
+        await audioContext.resume()
+        console.log('✅ AudioContext 활성화됨:', audioContext.state)
+      }
+      
       audioContextRef.current = audioContext
 
       const source = audioContext.createMediaStreamSource(stream)
-      const processor = audioContext.createScriptProcessor(1024, 1, 1)
+      console.log('🎵 MediaStreamSource 생성됨')
+      
+      // ScriptProcessorNode 생성 (더 큰 버퍼 사이즈 사용)
+      const processor = audioContext.createScriptProcessor(4096, 1, 1)
       processorRef.current = processor
+      console.log('⚙️ ScriptProcessorNode 생성됨 (버퍼 크기: 4096)')
 
       let audioSendCount = 0
+      let processorCallCount = 0
+      
       processor.onaudioprocess = (event) => {
+        processorCallCount++
+        
+        // 프로세서가 활성화되었음을 UI에 표시
+        if (processorCallCount === 1) {
+          setProcessorActive(true)
+          console.log('🔄 오디오 프로세서 시작됨!')
+        }
+        
+        // 처음 몇 번은 로그 출력
+        if (processorCallCount <= 5) {
+          console.log(`📊 오디오 프로세서 호출 #${processorCallCount}`)
+        }
+        
+        const inputBuffer = event.inputBuffer.getChannelData(0)
+        
+        // 오디오 레벨 확인 (RMS 계산으로 더 정확한 감지)
+        let sum = 0
+        for (let i = 0; i < inputBuffer.length; i++) {
+          sum += inputBuffer[i] * inputBuffer[i]
+        }
+        const rmsLevel = Math.sqrt(sum / inputBuffer.length)
+        const currentAudioLevel = rmsLevel
+        
+        // 처음 몇 번은 무조건 로그 출력 (디버깅용)
+        if (processorCallCount <= 10) {
+          console.log(`📈 오디오 레벨 #${processorCallCount}: RMS=${currentAudioLevel.toFixed(6)}, Max=${Math.max(...inputBuffer.map(Math.abs)).toFixed(6)}`)
+        }
+        
+        // UI 업데이트 (실시간 오디오 레벨 표시)
+        setAudioLevel(currentAudioLevel)
+        
         if (isRecording && sessionRef.current) {
-          const inputBuffer = event.inputBuffer.getChannelData(0)
-          
-          // 오디오 레벨 확인 (소리가 들어오는지 체크)
-          const currentAudioLevel = Math.max(...inputBuffer.map(Math.abs))
-          
-          // UI 업데이트 (실시간 오디오 레벨 표시)
-          setAudioLevel(currentAudioLevel)
-          
-          // 일정 레벨 이상의 소리만 전송 (배경 노이즈 필터링)
-          if (currentAudioLevel > 0.02) {
+          // 더 낮은 임계값으로 민감도 증가 (RMS 기준)
+          if (currentAudioLevel > 0.01) {
             audioSendCount++
             setVoiceDetected(true)
-            console.log(`🎤 음성 감지됨 #${audioSendCount}, 레벨: ${currentAudioLevel.toFixed(4)}`)
+            console.log(`🎤 음성 감지됨 #${audioSendCount}, RMS 레벨: ${currentAudioLevel.toFixed(4)}`)
             
             // Float32 to Int16 conversion
             const pcmData = float32ToInt16(inputBuffer)
@@ -205,23 +258,36 @@ export default function GeminiRealtimeVoiceInterview({
             
             // 음성 감지 상태를 잠시 유지
             setTimeout(() => setVoiceDetected(false), 500)
-          } else if (currentAudioLevel > 0.005) {
-            // 작은 소리도 감지하여 로그
-            console.log(`🔇 작은 소리 감지, 레벨: ${currentAudioLevel.toFixed(4)} (전송 안함)`)
+          } else if (currentAudioLevel > 0.001) {
+            // 매우 작은 소리도 감지하여 로그 (더 민감하게)
+            if (processorCallCount % 50 === 0) {
+              console.log(`🔇 작은 소리 감지, RMS 레벨: ${currentAudioLevel.toFixed(6)} (임계값: 0.01 미만으로 전송 안함)`)
+            }
           }
         } else {
-          // 녹음 중이 아닐 때는 레벨 0으로 설정
-          setAudioLevel(0)
-          setVoiceDetected(false)
+          // 녹음 중이 아닐 때도 레벨은 계속 표시 (더 자주)
+          if (processorCallCount % 50 === 0) {
+            console.log(`🔇 녹음 중 아님, 현재 RMS 레벨: ${currentAudioLevel.toFixed(6)}`)
+          }
         }
       }
 
       source.connect(processor)
-      processor.connect(audioContext.destination)
+      // processor를 destination에 연결하지 않음 (오디오 캡처만 목적, 피드백 방지)
+      
+      console.log('🔗 오디오 노드 연결 완료')
+      console.log('✅ 마이크 설정 완료! 녹음 시작 버튼을 눌러주세요.')
 
     } catch (error) {
-      console.error('오디오 설정 오류:', error)
-      setConnectionStatus('마이크 접근 실패')
+      console.error('❌ 오디오 설정 오류:', error)
+      setConnectionStatus('마이크 접근 실패: ' + error.message)
+      
+      // 구체적인 오류 메시지 표시
+      if (error.name === 'NotAllowedError') {
+        setConnectionStatus('마이크 권한이 거부되었습니다. 브라우저 설정에서 마이크 권한을 허용해주세요.')
+      } else if (error.name === 'NotFoundError') {
+        setConnectionStatus('마이크 장치를 찾을 수 없습니다.')
+      }
     }
   }
 
@@ -400,19 +466,99 @@ export default function GeminiRealtimeVoiceInterview({
     }
   }
 
-  const startRecording = () => {
+  const startRecording = async () => {
     if (!isConnected) {
       console.log('연결되지 않음, 녹음 시작 불가')
       return
     }
     
+    console.log('🔴 녹음 시작 버튼 클릭됨')
+    
+    // AudioContext가 suspended 상태면 사용자 제스처로 활성화
+    if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+      console.log('⏯️ 사용자 제스처로 AudioContext 활성화 중...')
+      try {
+        await audioContextRef.current.resume()
+        console.log('✅ AudioContext 활성화됨:', audioContextRef.current.state)
+      } catch (error) {
+        console.error('❌ AudioContext 활성화 실패:', error)
+      }
+    }
+    
     setIsRecording(true)
-    setConnectionStatus('음성 녹음 중...')
+    setConnectionStatus('음성 녹음 중... 마이크에 대고 말해보세요!')
+    console.log('🎙️ 녹음 상태 활성화 완료')
   }
 
   const stopRecording = () => {
     setIsRecording(false)
     setConnectionStatus('음성 인터뷰 준비 완료')
+  }
+
+  const testMicrophone = async () => {
+    console.log('🔍 마이크 테스트 시작...')
+    try {
+      // 실제 사용과 동일한 설정으로 마이크 테스트
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          sampleRate: 16000,
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true
+        }
+      })
+      console.log('✅ 마이크 접근 성공!')
+      console.log('🎵 오디오 트랙 정보:', stream.getAudioTracks().map(track => ({
+        라벨: track.label,
+        활성화: track.enabled,
+        준비상태: track.readyState,
+        설정: track.getSettings()
+      })))
+      
+      // AudioContext로 레벨 측정 (실제 사용과 동일한 설정)
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
+      const testContext = new AudioContextClass({ sampleRate: 16000 })
+      
+      console.log('🔊 테스트 AudioContext 상태:', testContext.state)
+      
+      if (testContext.state === 'suspended') {
+        console.log('⏯️ 테스트 AudioContext resume 중...')
+        await testContext.resume()
+        console.log('✅ 테스트 AudioContext 활성화됨:', testContext.state)
+      }
+      
+      const source = testContext.createMediaStreamSource(stream)
+      const processor = testContext.createScriptProcessor(4096, 1, 1)
+      
+      source.connect(processor)
+      // processor를 destination에 연결하지 않음
+      
+      let testCount = 0
+      processor.onaudioprocess = (event) => {
+        const inputBuffer = event.inputBuffer.getChannelData(0)
+        
+        // 실제 사용과 동일한 RMS 계산
+        let sum = 0
+        for (let i = 0; i < inputBuffer.length; i++) {
+          sum += inputBuffer[i] * inputBuffer[i]
+        }
+        const rmsLevel = Math.sqrt(sum / inputBuffer.length)
+        const maxLevel = Math.max(...inputBuffer.map(Math.abs))
+        
+        testCount++
+        console.log(`🎤 마이크 테스트 #${testCount}, RMS: ${rmsLevel.toFixed(6)}, Max: ${maxLevel.toFixed(6)}`)
+        
+        if (testCount >= 20) {
+          processor.disconnect()
+          stream.getTracks().forEach(track => track.stop())
+          testContext.close()
+          console.log('✅ 마이크 테스트 완료')
+        }
+      }
+      
+    } catch (error) {
+      console.error('❌ 마이크 테스트 실패:', error)
+    }
   }
 
   const sendTestMessage = async () => {
@@ -513,13 +659,21 @@ export default function GeminiRealtimeVoiceInterview({
 
     // Processor 해제
     if (processorRef.current) {
-      processorRef.current.disconnect()
+      try {
+        processorRef.current.disconnect()
+        processorRef.current.onaudioprocess = null
+      } catch (error) {
+        console.error('Processor 해제 오류:', error)
+      }
       processorRef.current = null
     }
 
     setIsConnected(false)
     setIsRecording(false)
     setIsAISpeaking(false)
+    setProcessorActive(false)
+    setAudioLevel(0)
+    setVoiceDetected(false)
     setConnectionStatus('연결 해제됨')
   }, [])
 
@@ -552,30 +706,46 @@ export default function GeminiRealtimeVoiceInterview({
         </div>
         
         {/* 음성 활동 표시 */}
-        {isRecording && (
+        {(isRecording || processorActive) && (
           <div className="flex flex-col items-center space-y-2">
-            <div className="flex items-center space-x-3">
-              <span className="text-xs text-gray-500">마이크 레벨:</span>
-              <div className="w-32 h-2 bg-gray-200 rounded-full overflow-hidden">
-                <div 
-                  className={`h-full transition-all duration-100 ${
-                    voiceDetected ? 'bg-green-500' : 'bg-blue-400'
-                  }`}
-                  style={{ width: `${Math.min(100, audioLevel * 1000)}%` }}
-                ></div>
-              </div>
-              <span className="text-xs text-gray-500">
-                {(audioLevel * 100).toFixed(1)}%
-              </span>
+            {/* 프로세서 상태 표시 */}
+            <div className={`px-3 py-1 rounded-full text-xs font-medium ${
+              processorActive 
+                ? 'bg-blue-100 text-blue-800' 
+                : 'bg-red-100 text-red-800'
+            }`}>
+              {processorActive ? '🔄 오디오 프로세서 활성' : '❌ 오디오 프로세서 비활성'}
             </div>
             
-            <div className={`px-3 py-1 rounded-full text-xs font-medium ${
-              voiceDetected 
-                ? 'bg-green-100 text-green-800' 
-                : 'bg-gray-100 text-gray-600'
-            }`}>
-              {voiceDetected ? '🎤 음성 감지됨 (Gemini로 전송 중)' : '🔇 대기 중'}
-            </div>
+            {processorActive && (
+              <>
+                <div className="flex items-center space-x-3">
+                  <span className="text-xs text-gray-500">마이크 레벨:</span>
+                  <div className="w-32 h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div 
+                      className={`h-full transition-all duration-100 ${
+                        voiceDetected ? 'bg-green-500' : 'bg-blue-400'
+                      }`}
+                      style={{ width: `${Math.min(100, audioLevel * 1000)}%` }}
+                    ></div>
+                  </div>
+                  <span className="text-xs text-gray-500">
+                    {(audioLevel * 100).toFixed(1)}%
+                  </span>
+                </div>
+                
+                <div className={`px-3 py-1 rounded-full text-xs font-medium ${
+                  voiceDetected 
+                    ? 'bg-green-100 text-green-800' 
+                    : 'bg-gray-100 text-gray-600'
+                }`}>
+                  {isRecording 
+                    ? (voiceDetected ? '🎤 음성 감지됨 (Gemini로 전송 중)' : '🔇 대기 중')
+                    : '⏸️ 녹음 중지 상태'
+                  }
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -591,6 +761,14 @@ export default function GeminiRealtimeVoiceInterview({
           </button>
         ) : (
           <div className="flex flex-col gap-3">
+            {/* 마이크 테스트 버튼 */}
+            <button
+              onClick={testMicrophone}
+              className="bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
+            >
+              🔍 마이크 테스트 (콘솔 확인)
+            </button>
+            
             {/* 텍스트 테스트 버튼 */}
             <button
               onClick={sendTestMessage}
@@ -663,11 +841,12 @@ export default function GeminiRealtimeVoiceInterview({
         <p className="mb-2">💡 문제 해결 가이드:</p>
         <ul className="list-disc list-inside space-y-1 ml-2">
           <li>• <strong>1단계</strong>: "Gemini Live 연결" → 초록불 확인</li>
-          <li>• <strong>2단계</strong>: "텍스트 메시지 테스트" → AI 음성 나오는지 확인</li>
-          <li>• <strong>3단계</strong>: "음성 녹음 시작" → 마이크 레벨 바 움직이는지 확인</li>
-          <li>• <strong>4단계</strong>: 말하기 → 초록색 "음성 감지됨" 표시 확인</li>
-          <li>• 마이크 권한 허용 필요 / 콘솔 로그에서 "🎤 음성 감지됨" 확인</li>
-          <li>• 문제 시: 페이지 새로고침 후 다시 시도</li>
+          <li>• <strong>2단계</strong>: "마이크 테스트" → 콘솔에서 마이크 레벨 숫자 확인</li>
+          <li>• <strong>3단계</strong>: "텍스트 메시지 테스트" → AI 음성 나오는지 확인</li>
+          <li>• <strong>4단계</strong>: "음성 녹음 시작" → "오디오 프로세서 활성" 파란색 표시 확인</li>
+          <li>• <strong>5단계</strong>: 말하기 → 마이크 레벨 바 움직이고 "음성 감지됨" 초록색 표시 확인</li>
+          <li>• 마이크 권한 허용 필요 / 콘솔 로그에서 "📈 오디오 레벨" 및 "🎤 음성 감지됨" 확인</li>
+          <li>• 프로세서가 비활성이면 AudioContext 문제 / 문제 시: 페이지 새로고침 후 다시 시도</li>
         </ul>
       </div>
     </div>
