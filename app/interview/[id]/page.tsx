@@ -71,11 +71,18 @@ export default function InterviewPage() {
         body: JSON.stringify({ sessionId, question, answer })
       })
 
-      if (response.ok) {
-        await fetchSessionAndConversations()
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || '대화 저장 실패')
       }
+
+      console.log('대화 저장 성공')
+      // 저장 후 바로 목록 갱신 (선택사항)
+      // await fetchSessionAndConversations()
     } catch (error) {
       console.error('Error saving conversation:', error)
+      // 사용자에게 알림을 주고 싶다면 상태 추가 가능
+      throw error // 에러를 다시 throw해서 호출하는 곳에서 처리
     }
   }
 

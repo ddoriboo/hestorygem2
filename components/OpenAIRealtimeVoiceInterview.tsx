@@ -217,7 +217,7 @@ export default function OpenAIRealtimeVoiceInterview({ sessionNumber, onConversa
     }
   }, [])
 
-  const addUserMessage = useCallback((transcript: string) => {
+  const addUserMessage = useCallback(async (transcript: string) => {
     const userMessage: Conversation = {
       role: 'user',
       content: transcript,
@@ -240,8 +240,14 @@ export default function OpenAIRealtimeVoiceInterview({ sessionNumber, onConversa
         .find(conv => conv.role === 'assistant')
       
       if (lastAssistant) {
-        console.log('💾 대화 저장:', lastAssistant.content, userMessage.content)
+        console.log('💾 대화 저장 시도:', lastAssistant.content, userMessage.content)
+        // 비동기로 저장하되 에러는 무시 (UI 차단 방지)
         onConversationSave(lastAssistant.content, userMessage.content)
+          .then(() => console.log('✅ 대화 저장 성공'))
+          .catch((error) => {
+            console.error('❌ 대화 저장 실패:', error)
+            // 저장 실패해도 대화는 계속 진행 (사용자 경험 우선)
+          })
       }
       
       return newConversations
@@ -394,23 +400,23 @@ export default function OpenAIRealtimeVoiceInterview({ sessionNumber, onConversa
   const isIOS = typeof window !== 'undefined' && navigator.userAgent.match(/iPhone|iPad|iPod/i)
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-6">
-      <div className="mb-6">
-        <h3 className="text-xl font-semibold text-gray-800 mb-2">🎤 OpenAI Realtime 음성 인터뷰</h3>
-        <p className="text-gray-600">{connectionStatus}</p>
+    <div className="bg-white rounded-lg shadow-lg p-4 sm:p-6">
+      <div className="mb-4 sm:mb-6">
+        <h3 className="text-lg sm:text-xl font-semibold text-gray-800 mb-2">🎤 OpenAI Realtime 음성 인터뷰</h3>
+        <p className="text-sm sm:text-base text-gray-600">{connectionStatus}</p>
         {isMobile && (
-          <p className="text-sm text-amber-600 mt-2">
+          <p className="text-xs sm:text-sm text-amber-600 mt-2">
             📱 모바일 환경입니다. {isIOS ? 'Safari' : 'Chrome'} 브라우저 사용을 권장합니다.
           </p>
         )}
       </div>
 
       {/* 연결 버튼 */}
-      <div className="flex justify-center mb-6 space-x-4">
+      <div className="flex justify-center mb-4 sm:mb-6 space-x-2 sm:space-x-4">
         {!isConnected ? (
           <button
             onClick={connectToRealtime}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
+            className="px-4 py-2 sm:px-6 sm:py-3 bg-blue-600 text-white text-sm sm:text-base rounded-lg hover:bg-blue-700 transition font-medium"
           >
             🎤 OpenAI 음성 인터뷰 시작
           </button>
@@ -418,14 +424,14 @@ export default function OpenAIRealtimeVoiceInterview({ sessionNumber, onConversa
           <>
             <button
               onClick={disconnect}
-              className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium"
+              className="px-4 py-2 sm:px-6 sm:py-3 bg-red-600 text-white text-sm sm:text-base rounded-lg hover:bg-red-700 transition font-medium"
             >
               🛑 인터뷰 종료
             </button>
             {isAISpeaking && (
               <button
                 onClick={interruptAI}
-                className="px-6 py-3 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition font-medium"
+                className="px-4 py-2 sm:px-6 sm:py-3 bg-yellow-600 text-white text-sm sm:text-base rounded-lg hover:bg-yellow-700 transition font-medium"
               >
                 ⏸️ AI 중단
               </button>
