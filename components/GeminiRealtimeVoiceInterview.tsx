@@ -32,6 +32,8 @@ export default function GeminiRealtimeVoiceInterview({
   const audioStreamRef = useRef<MediaStream | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const processorRef = useRef<ScriptProcessorNode | null>(null)
+  const analyserRef = useRef<AnalyserNode | null>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const geminiClientRef = useRef<any>(null)
   const responseQueueRef = useRef<any[]>([])
   const messageHandlersRef = useRef<((data: any) => void)[]>([])
@@ -195,24 +197,38 @@ export default function GeminiRealtimeVoiceInterview({
       console.log('🎙️ =================================')
       
       // 이미 설정되어 있다면 정리 후 재설정
-      if (audioStreamRef.current || audioContextRef.current || processorRef.current) {
+      if (audioStreamRef.current || audioContextRef.current || analyserRef.current || mediaRecorderRef.current) {
         console.log('🔄 기존 오디오 설정 정리 중...')
+        
+        // MediaRecorder 정리
+        if (mediaRecorderRef.current) {
+          if (mediaRecorderRef.current.state === 'recording') {
+            mediaRecorderRef.current.stop()
+          }
+          mediaRecorderRef.current = null
+        }
+        
+        // AnalyserNode 정리
+        if (analyserRef.current) {
+          if ((analyserRef.current as any).intervalId) {
+            clearInterval((analyserRef.current as any).intervalId)
+          }
+          analyserRef.current.disconnect()
+          analyserRef.current = null
+        }
+        
+        // AudioStream 정리
         if (audioStreamRef.current) {
           audioStreamRef.current.getTracks().forEach(track => track.stop())
           audioStreamRef.current = null
         }
+        
+        // AudioContext 정리
         if (audioContextRef.current) {
           audioContextRef.current.close()
           audioContextRef.current = null
         }
-        if (processorRef.current) {
-          // interval 정리
-          if ((processorRef.current as any).intervalId) {
-            clearInterval((processorRef.current as any).intervalId)
-          }
-          processorRef.current.disconnect()
-          processorRef.current = null
-        }
+        
         setProcessorActive(false)
         setAudioLevel(0)
         setVoiceDetected(false)
@@ -267,19 +283,52 @@ export default function GeminiRealtimeVoiceInterview({
       const source = audioContext.createMediaStreamSource(stream)
       console.log('MediaStreamSource 생성됨')
       
-      // AnalyserNode 사용 (더 안정적이고 현대적인 방식)
+      // AnalyserNode 사용 (UI 레벨 표시용)
       const analyser = audioContext.createAnalyser()
       analyser.fftSize = 2048
       analyser.smoothingTimeConstant = 0.3
-      processorRef.current = analyser // analyser를 processor ref에 저장
-      console.log('AnalyserNode 생성됨 (fftSize: 2048)')
+      analyserRef.current = analyser
+      console.log('AnalyserNode 생성됨 (fftSize: 2048) - UI 레벨 표시용')
 
       let audioSendCount = 0
       let processorCallCount = 0
       
-      console.log('6️⃣ 오디오 분석 타이머 설정 중...')
+      console.log('6️⃣ 실제 오디오 캡처용 MediaRecorder 설정 중...')
       
-      // setInterval을 사용하여 주기적으로 오디오 레벨 확인
+      // MediaRecorder로 실제 오디오 데이터 캡처
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: 'audio/webm;codecs=opus', // 가장 호환성 좋은 형식
+        audioBitsPerSecond: 16000 // 16kHz 맞춤
+      })
+      mediaRecorderRef.current = mediaRecorder
+      
+      const audioChunks: Blob[] = []
+      
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunks.push(event.data)
+          console.log(`🎵 오디오 청크 수신: ${event.data.size} bytes`)
+          
+          // 실시간으로 Gemini에 전송
+          if (isRecording && sessionRef.current) {
+            processAudioChunk(event.data)
+          }
+        }
+      }
+      
+      mediaRecorder.onerror = (event) => {
+        console.error('❌ MediaRecorder 오류:', event)
+      }
+      
+      console.log('MediaRecorder 설정 완료:', {
+        상태: mediaRecorder.state,
+        마임타입: mediaRecorder.mimeType,
+        오디오비트레이트: 16000
+      })
+      
+      console.log('7️⃣ UI용 오디오 분석 타이머 설정 중...')
+      
+      // setInterval을 사용하여 주기적으로 오디오 레벨 확인 (UI용)
       const audioAnalysisInterval = setInterval(() => {
         if (!analyser || !audioStreamRef.current) {
           console.log('⚠️ 분석 중단: analyser 또는 stream이 없음')
@@ -320,43 +369,19 @@ export default function GeminiRealtimeVoiceInterview({
         // UI 업데이트 (실시간 오디오 레벨 표시)
         setAudioLevel(currentAudioLevel)
         
-        if (isRecording && sessionRef.current) {
-          // 0-1 범위에서 임계값 조정 (정규화된 값 기준)
-          if (currentAudioLevel > 0.02) { // 255 * 0.02 = 약 5 정도의 레벨
-            audioSendCount++
-            setVoiceDetected(true)
-            console.log(`🎤 음성 감지됨 #${audioSendCount}, 레벨: ${currentAudioLevel.toFixed(4)} (평균: ${average.toFixed(2)})`)
-            
-            // 임시로 더미 오디오 데이터 생성 (실제 PCM 데이터는 별도 처리 필요)
-            const dummyBuffer = new Float32Array(1024)
-            for (let i = 0; i < dummyBuffer.length; i++) {
-              dummyBuffer[i] = (Math.random() - 0.5) * 0.1 * currentAudioLevel
-            }
-            const pcmData = float32ToInt16(dummyBuffer)
-            
-            // Gemini Live API에 오디오 데이터 전송
-            sendAudioToGemini(pcmData)
-            
-            // 음성 감지 상태를 잠시 유지
-            setTimeout(() => setVoiceDetected(false), 500)
-          } else if (currentAudioLevel > 0.005) {
-            // 매우 작은 소리도 감지하여 로그 (더 민감하게)
-            if (processorCallCount % 50 === 0) {
-              console.log(`🔇 작은 소리 감지, 레벨: ${currentAudioLevel.toFixed(6)} (평균: ${average.toFixed(2)}) (임계값: 0.02 미만으로 전송 안함)`)
-            }
-          }
-        } else {
-          // 녹음 중이 아닐 때도 레벨은 계속 표시 (더 자주)
-          if (processorCallCount % 50 === 0) {
-            console.log(`🔇 녹음 중 아님, 현재 레벨: ${currentAudioLevel.toFixed(6)} (평균: ${average.toFixed(2)})`)
-          }
+        // 음성 감지 상태 업데이트 (UI용)
+        if (currentAudioLevel > 0.02) {
+          setVoiceDetected(true)
+          // 음성 감지 상태를 잠시 유지
+          setTimeout(() => setVoiceDetected(false), 500)
         }
+        
       }, 50) // 50ms마다 분석 (20fps)
       
       // interval ID를 저장하여 나중에 정리할 수 있도록
       ;(analyser as any).intervalId = audioAnalysisInterval
 
-      console.log('7️⃣ 오디오 노드 연결 중...')
+      console.log('8️⃣ 오디오 노드 연결 중...')
       source.connect(analyser)
       // analyser를 destination에 연결하지 않음 (오디오 캡처만 목적, 피드백 방지)
       
@@ -390,6 +415,38 @@ export default function GeminiRealtimeVoiceInterview({
       int16Array[i] = val < 0 ? val * 0x8000 : val * 0x7FFF
     }
     return int16Array
+  }
+
+  // 실제 오디오 청크를 Gemini에 전송하기 위해 처리
+  const processAudioChunk = async (audioBlob: Blob) => {
+    try {
+      console.log(`🔄 오디오 청크 처리 시작: ${audioBlob.size} bytes, 타입: ${audioBlob.type}`)
+      
+      // Blob을 ArrayBuffer로 변환
+      const arrayBuffer = await audioBlob.arrayBuffer()
+      console.log(`📦 ArrayBuffer 변환 완료: ${arrayBuffer.byteLength} bytes`)
+      
+      // 임시로 WebM 데이터를 Base64로 변환해서 전송 (테스트용)
+      // 실제로는 PCM으로 변환해야 하지만, 일단 Gemini가 응답하는지 확인
+      const base64Audio = btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(arrayBuffer))))
+      
+      console.log(`📤 Gemini로 오디오 전송 시도: ${base64Audio.length} chars`)
+      
+      if (sessionRef.current) {
+        await sessionRef.current.sendRealtimeInput({
+          audio: {
+            data: base64Audio,
+            mimeType: "audio/webm;codecs=opus" // WebM 형식으로 시도
+          }
+        })
+        console.log(`✅ Gemini로 오디오 전송 성공`)
+      } else {
+        console.log(`❌ Gemini 세션이 없어서 전송 실패`)
+      }
+      
+    } catch (error) {
+      console.error('❌ 오디오 청크 처리 실패:', error)
+    }
   }
 
   let audioTransmissionCount = 0
@@ -581,8 +638,15 @@ export default function GeminiRealtimeVoiceInterview({
         }
       }
       
+      // MediaRecorder 시작
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'inactive') {
+        console.log('🎬 MediaRecorder 녹음 시작...')
+        mediaRecorderRef.current.start(100) // 100ms마다 데이터 이벤트 발생
+        console.log('✅ MediaRecorder 시작됨, 상태:', mediaRecorderRef.current.state)
+      }
+      
       setIsRecording(true)
-      setConnectionStatus('음성 녹음 중... 마이크에 대고 말해보세요!')
+      setConnectionStatus('🎤 실시간 음성 녹음 중... Gemini가 듣고 있습니다!')
       console.log('🎙️ 녹음 상태 활성화 완료')
       
     } catch (error) {
@@ -592,8 +656,18 @@ export default function GeminiRealtimeVoiceInterview({
   }
 
   const stopRecording = () => {
+    console.log('⏹️ 녹음 중단 요청됨')
+    
+    // MediaRecorder 중지
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      console.log('🛑 MediaRecorder 중지 중...')
+      mediaRecorderRef.current.stop()
+      console.log('✅ MediaRecorder 중지됨, 상태:', mediaRecorderRef.current.state)
+    }
+    
     setIsRecording(false)
     setConnectionStatus('음성 인터뷰 준비 완료')
+    console.log('🔇 녹음 상태 비활성화 완료')
   }
 
   const testMicrophone = async () => {
@@ -809,13 +883,35 @@ export default function GeminiRealtimeVoiceInterview({
       audioContextRef.current = null
     }
 
-    // Processor 해제 (AnalyserNode 및 interval 정리)
-    if (processorRef.current) {
+    // MediaRecorder 해제
+    if (mediaRecorderRef.current) {
+      try {
+        if (mediaRecorderRef.current.state === 'recording') {
+          mediaRecorderRef.current.stop()
+        }
+      } catch (error) {
+        console.error('MediaRecorder 해제 오류:', error)
+      }
+      mediaRecorderRef.current = null
+    }
+
+    // AnalyserNode 해제 (interval 정리)
+    if (analyserRef.current) {
       try {
         // interval 정리
-        if ((processorRef.current as any).intervalId) {
-          clearInterval((processorRef.current as any).intervalId)
+        if ((analyserRef.current as any).intervalId) {
+          clearInterval((analyserRef.current as any).intervalId)
         }
+        analyserRef.current.disconnect()
+      } catch (error) {
+        console.error('AnalyserNode 해제 오류:', error)
+      }
+      analyserRef.current = null
+    }
+
+    // 기존 Processor 해제 (호환성용)
+    if (processorRef.current) {
+      try {
         processorRef.current.disconnect()
       } catch (error) {
         console.error('Processor 해제 오류:', error)
