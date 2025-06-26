@@ -83,13 +83,27 @@ export default function GeminiRealtimeVoiceInterview({
         model: config.model,
         config: {
           responseModalities: ["AUDIO"],
-          systemInstruction: config.sessionPrompt
+          systemInstruction: config.sessionPrompt,
+          // 입력 음성 전사 활성화
+          inputAudioTranscription: {},
+          // 출력 음성 전사 활성화
+          outputAudioTranscription: {},
+          // Voice Activity Detection 설정
+          realtimeInputConfig: {
+            automaticActivityDetection: {
+              disabled: false,
+              startOfSpeechSensitivity: "START_SENSITIVITY_MEDIUM",
+              endOfSpeechSensitivity: "END_SENSITIVITY_MEDIUM"
+            }
+          }
         },
         callbacks: {
           onopen: () => {
             console.log('Gemini Live 연결 성공')
             setIsConnected(true)
             setConnectionStatus('음성 인터뷰 준비 완료')
+            // 연결 후 자동으로 녹음 시작
+            setIsRecording(true)
           },
           onmessage: (message: any) => {
             console.log('Gemini Live 메시지:', message)
@@ -147,6 +161,12 @@ export default function GeminiRealtimeVoiceInterview({
         if (isRecording && sessionRef.current) {
           const inputBuffer = event.inputBuffer.getChannelData(0)
           
+          // 오디오 레벨 확인 (소리가 들어오는지 체크)
+          const audioLevel = Math.max(...inputBuffer.map(Math.abs))
+          if (audioLevel > 0.01) {
+            console.log('오디오 감지됨, 레벨:', audioLevel.toFixed(4))
+          }
+          
           // Float32 to Int16 conversion
           const pcmData = float32ToInt16(inputBuffer)
           
@@ -175,12 +195,29 @@ export default function GeminiRealtimeVoiceInterview({
   }
 
   const sendAudioToGemini = async (audioData: Int16Array) => {
-    if (!sessionRef.current) return
+    if (!sessionRef.current) {
+      console.log('세션이 없음, 오디오 전송 건너뜀')
+      return
+    }
     
     try {
-      // Int16Array를 Base64로 변환
+      // Int16Array를 Uint8Array로 변환
       const bytes = new Uint8Array(audioData.buffer)
-      const base64Audio = btoa(String.fromCharCode(...bytes))
+      
+      // 더 안전한 base64 변환 (청크 단위로)
+      let base64Audio = ''
+      const chunkSize = 8192
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        const chunk = bytes.slice(i, i + chunkSize)
+        base64Audio += btoa(String.fromCharCode.apply(null, Array.from(chunk)))
+      }
+      
+      // 전송 로그 (더 자세한 정보)
+      console.log('오디오 전송 중...', {
+        크기: audioData.length,
+        바이트: bytes.length,
+        base64길이: base64Audio.length
+      })
       
       // Gemini Live API에 오디오 전송
       await sessionRef.current.sendRealtimeInput({
@@ -189,6 +226,8 @@ export default function GeminiRealtimeVoiceInterview({
           mimeType: "audio/pcm;rate=16000"
         }
       })
+      
+      console.log('오디오 전송 완료')
     } catch (error) {
       console.error('오디오 전송 오류:', error)
     }
@@ -197,14 +236,41 @@ export default function GeminiRealtimeVoiceInterview({
   const handleGeminiMessage = useCallback((message: any) => {
     console.log('Gemini 응답:', message)
     
+    // 설정 완료 시 초기 인사
+    if (message.setupComplete) {
+      console.log('Gemini Live 설정 완료!')
+      setTimeout(() => {
+        if (sessionRef.current) {
+          console.log('초기 인사 메시지 전송')
+          sessionRef.current.sendClientContent({
+            turns: [{ role: "user", parts: [{ text: "안녕하세요! 오늘은 어떤 이야기를 나눠볼까요?" }] }],
+            turnComplete: true
+          }).catch((error: any) => console.error('초기 메시지 전송 오류:', error))
+        }
+      }, 1000)
+      return
+    }
+    
     // 서버 응답 처리
     if (message.serverContent) {
       const content = message.serverContent
+      
+      // 입력 전사 (사용자 음성 → 텍스트)
+      if (content.inputTranscription) {
+        console.log('사용자 음성 전사:', content.inputTranscription.text)
+        const userMessage: Conversation = {
+          role: 'user',
+          content: content.inputTranscription.text,
+          timestamp: new Date()
+        }
+        setConversations(prev => [...prev, userMessage])
+      }
       
       // 텍스트 응답 처리
       if (content.modelTurn && content.modelTurn.parts) {
         for (const part of content.modelTurn.parts) {
           if (part.text) {
+            console.log('AI 텍스트 응답:', part.text)
             const assistantMessage: Conversation = {
               role: 'assistant',
               content: part.text,
@@ -219,6 +285,7 @@ export default function GeminiRealtimeVoiceInterview({
           
           // 오디오 응답 처리
           if (part.inlineData && part.inlineData.mimeType === 'audio/pcm') {
+            console.log('AI 오디오 응답 수신')
             try {
               playAudioData(part.inlineData.data)
               setIsAISpeaking(true)
@@ -229,9 +296,20 @@ export default function GeminiRealtimeVoiceInterview({
         }
       }
       
+      // 출력 전사 (AI 음성 → 텍스트)
+      if (content.outputTranscription) {
+        console.log('AI 음성 전사:', content.outputTranscription.text)
+      }
+      
       // 턴 완료 처리
       if (content.turnComplete) {
         console.log('턴 완료')
+        setIsAISpeaking(false)
+      }
+      
+      // 인터럽트 처리
+      if (content.interrupted) {
+        console.log('AI 응답 인터럽트됨')
         setIsAISpeaking(false)
       }
     }
