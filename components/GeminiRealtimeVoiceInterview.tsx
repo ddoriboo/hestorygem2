@@ -197,15 +197,13 @@ export default function GeminiRealtimeVoiceInterview({
       console.log('🎙️ =================================')
       
       // 이미 설정되어 있다면 정리 후 재설정
-      if (audioStreamRef.current || audioContextRef.current || analyserRef.current || mediaRecorderRef.current) {
+      if (audioStreamRef.current || audioContextRef.current || analyserRef.current || processorRef.current) {
         console.log('🔄 기존 오디오 설정 정리 중...')
         
-        // MediaRecorder 정리
-        if (mediaRecorderRef.current) {
-          if (mediaRecorderRef.current.state === 'recording') {
-            mediaRecorderRef.current.stop()
-          }
-          mediaRecorderRef.current = null
+        // ScriptProcessorNode 정리
+        if (processorRef.current) {
+          processorRef.current.disconnect()
+          processorRef.current = null
         }
         
         // AnalyserNode 정리
@@ -290,41 +288,48 @@ export default function GeminiRealtimeVoiceInterview({
       analyserRef.current = analyser
       console.log('AnalyserNode 생성됨 (fftSize: 2048) - UI 레벨 표시용')
 
+      console.log('6️⃣ 실제 PCM 오디오 캡처용 ScriptProcessorNode 설정 중...')
+      
+      // ScriptProcessorNode로 RAW PCM 데이터 캡처 (Gemini 요구사항)
+      const processor = audioContext.createScriptProcessor(4096, 1, 1)
+      processorRef.current = processor
+      console.log('✅ ScriptProcessorNode 생성됨 (RAW PCM 캡처용)')
+
       let audioSendCount = 0
       let processorCallCount = 0
       
-      console.log('6️⃣ 실제 오디오 캡처용 MediaRecorder 설정 중...')
-      
-      // MediaRecorder로 실제 오디오 데이터 캡처
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'audio/webm;codecs=opus', // 가장 호환성 좋은 형식
-        audioBitsPerSecond: 16000 // 16kHz 맞춤
-      })
-      mediaRecorderRef.current = mediaRecorder
-      
-      const audioChunks: Blob[] = []
-      
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunks.push(event.data)
-          console.log(`🎵 오디오 청크 수신: ${event.data.size} bytes`)
+      processor.onaudioprocess = (event) => {
+        processorCallCount++
+        
+        // 처음 몇 번은 로그 출력
+        if (processorCallCount <= 5) {
+          console.log(`📊 PCM 프로세서 호출 #${processorCallCount}`)
+        }
+        
+        const inputBuffer = event.inputBuffer.getChannelData(0)
+        
+        // 실시간으로 Gemini에 PCM 데이터 전송
+        if (isRecording && sessionRef.current) {
+          // RMS 레벨 계산 (음성 감지용)
+          let sum = 0
+          for (let i = 0; i < inputBuffer.length; i++) {
+            sum += inputBuffer[i] * inputBuffer[i]
+          }
+          const rmsLevel = Math.sqrt(sum / inputBuffer.length)
           
-          // 실시간으로 Gemini에 전송
-          if (isRecording && sessionRef.current) {
-            processAudioChunk(event.data)
+          // 일정 레벨 이상일 때만 전송 (노이즈 필터링)
+          if (rmsLevel > 0.01) {
+            audioSendCount++
+            console.log(`🎤 PCM 데이터 전송 #${audioSendCount}, RMS: ${rmsLevel.toFixed(4)}`)
+            
+            // Float32를 Int16 PCM으로 변환
+            const pcmData = float32ToInt16(inputBuffer)
+            
+            // Gemini Live API에 RAW PCM 데이터 전송
+            sendPCMToGemini(pcmData)
           }
         }
       }
-      
-      mediaRecorder.onerror = (event) => {
-        console.error('❌ MediaRecorder 오류:', event)
-      }
-      
-      console.log('MediaRecorder 설정 완료:', {
-        상태: mediaRecorder.state,
-        마임타입: mediaRecorder.mimeType,
-        오디오비트레이트: 16000
-      })
       
       console.log('7️⃣ UI용 오디오 분석 타이머 설정 중...')
       
@@ -382,8 +387,12 @@ export default function GeminiRealtimeVoiceInterview({
       ;(analyser as any).intervalId = audioAnalysisInterval
 
       console.log('8️⃣ 오디오 노드 연결 중...')
-      source.connect(analyser)
-      // analyser를 destination에 연결하지 않음 (오디오 캡처만 목적, 피드백 방지)
+      source.connect(analyser) // UI용 레벨 표시
+      source.connect(processor) // PCM 데이터 캡처
+      // destination에는 연결하지 않음 (피드백 방지)
+      
+      // 프로세서가 활성화되었음을 표시
+      setProcessorActive(true)
       
       console.log('✅ 오디오 노드 연결 완료!')
       console.log('✅ 마이크 설정 완료!')
@@ -417,50 +426,13 @@ export default function GeminiRealtimeVoiceInterview({
     return int16Array
   }
 
-  // 실제 오디오 청크를 Gemini에 전송하기 위해 처리
-  const processAudioChunk = async (audioBlob: Blob) => {
+  // RAW PCM 데이터를 Gemini Live API에 전송 (올바른 형식)
+  const sendPCMToGemini = async (pcmData: Int16Array) => {
     try {
-      console.log(`🔄 오디오 청크 처리 시작: ${audioBlob.size} bytes, 타입: ${audioBlob.type}`)
+      // Int16Array를 Uint8Array로 변환 (바이트 단위)
+      const bytes = new Uint8Array(pcmData.buffer)
       
-      // Blob을 ArrayBuffer로 변환
-      const arrayBuffer = await audioBlob.arrayBuffer()
-      console.log(`📦 ArrayBuffer 변환 완료: ${arrayBuffer.byteLength} bytes`)
-      
-      // 임시로 WebM 데이터를 Base64로 변환해서 전송 (테스트용)
-      // 실제로는 PCM으로 변환해야 하지만, 일단 Gemini가 응답하는지 확인
-      const base64Audio = btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(arrayBuffer))))
-      
-      console.log(`📤 Gemini로 오디오 전송 시도: ${base64Audio.length} chars`)
-      
-      if (sessionRef.current) {
-        await sessionRef.current.sendRealtimeInput({
-          audio: {
-            data: base64Audio,
-            mimeType: "audio/webm;codecs=opus" // WebM 형식으로 시도
-          }
-        })
-        console.log(`✅ Gemini로 오디오 전송 성공`)
-      } else {
-        console.log(`❌ Gemini 세션이 없어서 전송 실패`)
-      }
-      
-    } catch (error) {
-      console.error('❌ 오디오 청크 처리 실패:', error)
-    }
-  }
-
-  let audioTransmissionCount = 0
-  const sendAudioToGemini = async (audioData: Int16Array) => {
-    if (!sessionRef.current) {
-      console.log('세션이 없음, 오디오 전송 건너뜀')
-      return
-    }
-    
-    audioTransmissionCount++
-    
-    try {
-      // 브라우저 호환성을 위해 직접 base64 변환
-      const bytes = new Uint8Array(audioData.buffer)
+      // Base64 인코딩 (청크 단위로 처리하여 브라우저 호환성 개선)
       let base64Audio = ''
       const chunkSize = 1024
       for (let i = 0; i < bytes.length; i += chunkSize) {
@@ -468,31 +440,25 @@ export default function GeminiRealtimeVoiceInterview({
         base64Audio += btoa(String.fromCharCode.apply(null, Array.from(chunk)))
       }
       
-      // 전송 로그 (매번이 아닌 주기적으로)
-      if (audioTransmissionCount % 20 === 1) {
-        console.log(`오디오 전송 #${audioTransmissionCount}`, {
-          크기: audioData.length,
-          바이트: audioData.buffer.byteLength,
-          base64길이: base64Audio.length
+      console.log(`📤 RAW PCM 데이터 Gemini 전송: ${pcmData.length} samples, ${bytes.length} bytes`)
+      
+      if (sessionRef.current) {
+        await sessionRef.current.sendRealtimeInput({
+          audio: {
+            data: base64Audio,
+            mimeType: "audio/pcm;rate=16000" // 올바른 PCM 형식!
+          }
         })
+        console.log(`✅ PCM 데이터 전송 성공!`)
+      } else {
+        console.log(`❌ Gemini 세션이 없어서 PCM 전송 실패`)
       }
       
-      // Gemini Live API에 전송
-      await sessionRef.current.sendRealtimeInput({
-        audio: {
-          data: base64Audio,
-          mimeType: "audio/pcm;rate=16000"
-        }
-      })
-      
-      // 성공 로그 (주기적으로)
-      if (audioTransmissionCount % 20 === 1) {
-        console.log(`오디오 전송 성공 #${audioTransmissionCount}`)
-      }
     } catch (error) {
-      console.error(`오디오 전송 실패 #${audioTransmissionCount}:`, error)
+      console.error('❌ PCM 데이터 전송 실패:', error)
     }
   }
+
 
   const handleGeminiMessage = useCallback((message: any) => {
     console.log('Gemini 응답:', message)
@@ -638,12 +604,8 @@ export default function GeminiRealtimeVoiceInterview({
         }
       }
       
-      // MediaRecorder 시작
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'inactive') {
-        console.log('🎬 MediaRecorder 녹음 시작...')
-        mediaRecorderRef.current.start(100) // 100ms마다 데이터 이벤트 발생
-        console.log('✅ MediaRecorder 시작됨, 상태:', mediaRecorderRef.current.state)
-      }
+      // ScriptProcessorNode는 자동으로 시작됨 (별도 시작 명령 불필요)
+      console.log('🎬 PCM 데이터 캡처 시작됨 (자동)')
       
       setIsRecording(true)
       setConnectionStatus('🎤 실시간 음성 녹음 중... Gemini가 듣고 있습니다!')
@@ -658,16 +620,10 @@ export default function GeminiRealtimeVoiceInterview({
   const stopRecording = () => {
     console.log('⏹️ 녹음 중단 요청됨')
     
-    // MediaRecorder 중지
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      console.log('🛑 MediaRecorder 중지 중...')
-      mediaRecorderRef.current.stop()
-      console.log('✅ MediaRecorder 중지됨, 상태:', mediaRecorderRef.current.state)
-    }
-    
+    // ScriptProcessorNode는 녹음 상태 플래그만 변경하면 됨
     setIsRecording(false)
     setConnectionStatus('음성 인터뷰 준비 완료')
-    console.log('🔇 녹음 상태 비활성화 완료')
+    console.log('🔇 녹음 상태 비활성화 완료 (PCM 캡처는 계속 활성)')
   }
 
   const testMicrophone = async () => {
@@ -883,17 +839,6 @@ export default function GeminiRealtimeVoiceInterview({
       audioContextRef.current = null
     }
 
-    // MediaRecorder 해제
-    if (mediaRecorderRef.current) {
-      try {
-        if (mediaRecorderRef.current.state === 'recording') {
-          mediaRecorderRef.current.stop()
-        }
-      } catch (error) {
-        console.error('MediaRecorder 해제 오류:', error)
-      }
-      mediaRecorderRef.current = null
-    }
 
     // AnalyserNode 해제 (interval 정리)
     if (analyserRef.current) {
