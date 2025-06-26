@@ -30,6 +30,8 @@ export default function GeminiRealtimeVoiceInterview({
   const audioContextRef = useRef<AudioContext | null>(null)
   const processorRef = useRef<ScriptProcessorNode | null>(null)
   const geminiClientRef = useRef<any>(null)
+  const responseQueueRef = useRef<any[]>([])
+  const messageHandlersRef = useRef<((data: any) => void)[]>([])
 
   useEffect(() => {
     // 클라이언트 사이드에서만 초기화
@@ -58,6 +60,35 @@ export default function GeminiRealtimeVoiceInterview({
     }
   }
 
+  // 공식 예제 패턴: 메시지 대기 함수
+  const waitMessage = useCallback(async () => {
+    let done = false
+    let message = undefined
+    while (!done) {
+      message = responseQueueRef.current.shift()
+      if (message) {
+        done = true
+      } else {
+        await new Promise((resolve) => setTimeout(resolve, 100))
+      }
+    }
+    return message
+  }, [])
+
+  // 공식 예제 패턴: 턴 처리 함수
+  const handleTurn = useCallback(async () => {
+    const turns = []
+    let done = false
+    while (!done) {
+      const message = await waitMessage()
+      turns.push(message)
+      if (message.serverContent && message.serverContent.turnComplete) {
+        done = true
+      }
+    }
+    return turns
+  }, [waitMessage])
+
   const connectToGemini = useCallback(async () => {
     try {
       setConnectionStatus('Gemini Live API 연결 중...')
@@ -70,7 +101,7 @@ export default function GeminiRealtimeVoiceInterview({
       const config = await configResponse.json()
 
       // Dynamic import로 Gemini SDK 로드
-      const { GoogleGenAI } = await import('@google/genai')
+      const { GoogleGenAI, Modality } = await import('@google/genai')
       
       // Gemini AI 초기화
       const genAI = new GoogleGenAI({ apiKey: config.apiKey })
@@ -78,11 +109,14 @@ export default function GeminiRealtimeVoiceInterview({
       
       console.log('Gemini Live 연결 시도:', config.model)
       
-      // Live API 연결
+      // 응답 큐 초기화
+      responseQueueRef.current = []
+      
+      // Live API 연결 (공식 예제 패턴)
       const session = await genAI.live.connect({
         model: config.model,
         config: {
-          responseModalities: ["AUDIO"],
+          responseModalities: [Modality.AUDIO],
           systemInstruction: config.sessionPrompt
         },
         callbacks: {
@@ -90,10 +124,12 @@ export default function GeminiRealtimeVoiceInterview({
             console.log('Gemini Live 연결 성공')
             setIsConnected(true)
             setConnectionStatus('음성 인터뷰 준비 완료')
-            // 자동 녹음 시작하지 않고 수동으로 테스트할 수 있게 함
           },
           onmessage: (message: any) => {
             console.log('Gemini Live 메시지:', message)
+            // 공식 예제 패턴: 메시지를 큐에 추가
+            responseQueueRef.current.push(message)
+            // 즉시 UI 업데이트를 위한 핸들러 호출
             handleGeminiMessage(message)
           },
           onerror: (error: any) => {
@@ -188,38 +224,47 @@ export default function GeminiRealtimeVoiceInterview({
     }
     
     try {
-      // Int16Array를 ArrayBuffer로 변환하여 Blob 생성
-      const audioBlob = new Blob([audioData.buffer], { type: "audio/pcm;rate=16000" })
+      // 공식 예제 패턴: Int16Array를 base64로 변환
+      const buffer = Buffer.from(audioData.buffer)
+      const base64Audio = buffer.toString('base64')
       
       // 전송 로그
       console.log('오디오 전송 중...', {
         크기: audioData.length,
         바이트: audioData.buffer.byteLength,
-        블롭크기: audioBlob.size
+        base64길이: base64Audio.length
       })
       
-      // Gemini Live API에 오디오 전송 (Blob 방식)
-      await sessionRef.current.sendRealtimeInput({
-        audio: audioBlob
+      // 공식 예제와 동일한 형식으로 전송
+      sessionRef.current.sendRealtimeInput({
+        audio: {
+          data: base64Audio,
+          mimeType: "audio/pcm;rate=16000"
+        }
       })
       
       console.log('오디오 전송 완료')
     } catch (error) {
       console.error('오디오 전송 오류:', error)
       
-      // 실패 시 기존 방식으로 재시도
+      // 브라우저에서 Buffer가 없을 경우 대안 방식
       try {
-        console.log('기존 방식으로 재시도...')
+        console.log('대안 방식으로 재시도...')
         const bytes = new Uint8Array(audioData.buffer)
-        const base64Audio = btoa(String.fromCharCode.apply(null, Array.from(bytes)))
+        let base64Audio = ''
+        const chunkSize = 8192
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+          const chunk = bytes.slice(i, i + chunkSize)
+          base64Audio += btoa(String.fromCharCode.apply(null, Array.from(chunk)))
+        }
         
-        await sessionRef.current.sendRealtimeInput({
+        sessionRef.current.sendRealtimeInput({
           audio: {
             data: base64Audio,
             mimeType: "audio/pcm;rate=16000"
           }
         })
-        console.log('기존 방식으로 전송 성공')
+        console.log('대안 방식으로 전송 성공')
       } catch (retryError) {
         console.error('재시도도 실패:', retryError)
       }
@@ -229,26 +274,13 @@ export default function GeminiRealtimeVoiceInterview({
   const handleGeminiMessage = useCallback((message: any) => {
     console.log('Gemini 응답:', message)
     
-    // 설정 완료 시 초기 인사
+    // 설정 완료
     if (message.setupComplete) {
-      console.log('Gemini Live 설정 완료!')
-      setTimeout(() => {
-        if (sessionRef.current) {
-          console.log('초기 텍스트 메시지 전송 테스트')
-          sessionRef.current.sendClientContent({
-            turns: [{ role: "user", parts: [{ text: "안녕하세요! 음성 인터뷰를 시작해주세요." }] }],
-            turnComplete: true
-          }).then(() => {
-            console.log('텍스트 메시지 전송 성공')
-          }).catch((error: any) => {
-            console.error('초기 메시지 전송 오류:', error)
-          })
-        }
-      }, 1000)
+      console.log('Gemini Live 설정 완료! 이제 수동으로 테스트할 수 있습니다.')
       return
     }
     
-    // 서버 응답 처리
+    // 서버 응답 처리 (실시간 스트리밍용)
     if (message.serverContent) {
       const content = message.serverContent
       
@@ -263,7 +295,7 @@ export default function GeminiRealtimeVoiceInterview({
         setConversations(prev => [...prev, userMessage])
       }
       
-      // 텍스트 응답 처리
+      // 텍스트 응답 처리 (실시간 스트리밍)
       if (content.modelTurn && content.modelTurn.parts) {
         for (const part of content.modelTurn.parts) {
           if (part.text) {
@@ -280,9 +312,9 @@ export default function GeminiRealtimeVoiceInterview({
             onConversationSave('AI 질문', part.text).catch(console.error)
           }
           
-          // 오디오 응답 처리
+          // 오디오 응답 처리 (실시간 스트리밍)
           if (part.inlineData && part.inlineData.mimeType === 'audio/pcm') {
-            console.log('AI 오디오 응답 수신')
+            console.log('AI 오디오 응답 수신 (실시간)')
             try {
               playAudioData(part.inlineData.data)
               setIsAISpeaking(true)
@@ -312,17 +344,24 @@ export default function GeminiRealtimeVoiceInterview({
     }
   }, [onConversationSave])
 
-  const playAudioData = (base64AudioData: string) => {
+  const playAudioData = (audioData: number[] | string) => {
     if (!audioContextRef.current) return
 
     try {
-      // Base64 디코딩
-      const binaryString = atob(base64AudioData)
-      const bytes = new Uint8Array(binaryString.length)
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i)
+      let int16Data: Int16Array
+
+      if (typeof audioData === 'string') {
+        // Base64 문자열인 경우
+        const binaryString = atob(audioData)
+        const bytes = new Uint8Array(binaryString.length)
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i)
+        }
+        int16Data = new Int16Array(bytes.buffer)
+      } else {
+        // 숫자 배열인 경우 (공식 예제 패턴)
+        int16Data = new Int16Array(audioData)
       }
-      const int16Data = new Int16Array(bytes.buffer)
       
       // Int16 to Float32 변환
       const floatData = new Float32Array(int16Data.length)
@@ -330,7 +369,7 @@ export default function GeminiRealtimeVoiceInterview({
         floatData[i] = int16Data[i] / (int16Data[i] < 0 ? 0x8000 : 0x7FFF)
       }
       
-      // 오디오 버퍼 생성 및 재생 (24kHz)
+      // 오디오 버퍼 생성 및 재생 (24kHz - 공식 예제와 동일)
       const audioContext = audioContextRef.current
       const audioBuffer = audioContext.createBuffer(1, floatData.length, 24000)
       audioBuffer.getChannelData(0).set(floatData)
@@ -342,9 +381,13 @@ export default function GeminiRealtimeVoiceInterview({
       
       source.onended = () => {
         setIsAISpeaking(false)
+        console.log('오디오 재생 완료')
       }
+
+      console.log('오디오 재생 시작됨, 지속시간:', audioBuffer.duration, '초')
     } catch (error) {
       console.error('오디오 재생 실패:', error)
+      setIsAISpeaking(false)
     }
   }
 
@@ -371,13 +414,45 @@ export default function GeminiRealtimeVoiceInterview({
 
     try {
       console.log('테스트 메시지 전송 중...')
+      setIsAISpeaking(true)
+      
+      // 텍스트 메시지 전송
       await sessionRef.current.sendClientContent({
-        turns: [{ role: "user", parts: [{ text: "안녕하세요! 저에 대해 간단히 소개해주세요." }] }],
+        turns: [{ role: "user", parts: [{ text: "안녕하세요! 간단한 인사말을 해주세요." }] }],
         turnComplete: true
       })
       console.log('테스트 메시지 전송 완료')
+
+      // 공식 예제 패턴: 응답 대기
+      console.log('AI 응답 대기 중...')
+      const turns = await handleTurn()
+      console.log('AI 응답 수신:', turns)
+
+      // 응답 처리
+      let combinedAudio: number[] = []
+      for (const turn of turns) {
+        if (turn.data) {
+          console.log('오디오 데이터 수신, 크기:', turn.data.length)
+          // Base64 데이터를 Int16Array로 변환
+          const binaryString = atob(turn.data)
+          const bytes = new Uint8Array(binaryString.length)
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i)
+          }
+          const int16Array = new Int16Array(bytes.buffer)
+          combinedAudio = combinedAudio.concat(Array.from(int16Array))
+        }
+      }
+
+      if (combinedAudio.length > 0) {
+        console.log('오디오 재생 시작, 전체 크기:', combinedAudio.length)
+        playAudioData(combinedAudio)
+      }
+
+      setIsAISpeaking(false)
     } catch (error) {
       console.error('테스트 메시지 전송 오류:', error)
+      setIsAISpeaking(false)
     }
   }
 
