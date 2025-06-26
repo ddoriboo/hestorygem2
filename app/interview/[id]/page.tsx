@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import GeminiRealtimeVoiceInterview from '@/components/GeminiRealtimeVoiceInterview'
+import GeminiLiveWrapper from '@/components/GeminiLiveWrapper'
 import GeminiTextInterview from '@/components/GeminiTextInterview'
 
 interface Conversation {
@@ -154,7 +154,7 @@ export default function InterviewPage() {
         )}
 
         {/* Gemini Live 실시간 음성 인터뷰 */}
-        <GeminiRealtimeVoiceInterview
+        <GeminiLiveWrapper
           sessionNumber={session?.sessionNumber || 1}
           onConversationSave={saveConversation}
         />
