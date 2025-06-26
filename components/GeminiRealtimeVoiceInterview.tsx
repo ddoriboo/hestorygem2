@@ -40,6 +40,8 @@ export default function GeminiRealtimeVoiceInterview({
     // 클라이언트 사이드에서만 초기화
     if (typeof window !== 'undefined') {
       initializeGeminiLive()
+      // 마이크 설정을 독립적으로 초기화
+      initializeAudioCapture()
     }
 
     return () => {
@@ -60,6 +62,35 @@ export default function GeminiRealtimeVoiceInterview({
     } catch (error) {
       console.error('초기화 오류:', error)
       setConnectionStatus(`초기화 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`)
+    }
+  }
+
+  const initializeAudioCapture = async () => {
+    try {
+      console.log('🎯 독립적 마이크 초기화 시작...')
+      setConnectionStatus('마이크 시스템 초기화 중...')
+      
+      // 브라우저 지원 확인
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('이 브라우저는 마이크를 지원하지 않습니다.')
+      }
+      
+      console.log('✅ 브라우저 마이크 지원 확인됨')
+      
+      // HTTPS 확인 (보안 컨텍스트)
+      if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+        console.warn('⚠️ HTTPS가 아닌 환경에서는 마이크 접근이 제한될 수 있습니다.')
+      }
+      
+      console.log('🌐 현재 URL:', location.href)
+      console.log('🔒 보안 컨텍스트:', window.isSecureContext)
+      
+      setConnectionStatus('마이크 초기화 완료')
+      console.log('✅ 마이크 시스템 초기화 완료!')
+      
+    } catch (error) {
+      console.error('❌ 마이크 초기화 실패:', error)
+      setConnectionStatus(`마이크 초기화 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`)
     }
   }
 
@@ -148,8 +179,8 @@ export default function GeminiRealtimeVoiceInterview({
 
       sessionRef.current = session
 
-      // 오디오 설정
-      await setupAudioCapture()
+      // 마이크 설정은 독립적으로 이미 초기화되었으므로 제거
+      console.log('🎤 Gemini 연결 완료, 마이크는 독립적으로 관리됨')
 
     } catch (error) {
       console.error('Gemini 연결 오류:', error)
@@ -159,8 +190,31 @@ export default function GeminiRealtimeVoiceInterview({
 
   const setupAudioCapture = async () => {
     try {
-      console.log('🎤 마이크 권한 요청 중...')
+      console.log('🎙️ =================================')
+      console.log('🎙️ 오디오 캡처 설정 시작!')
+      console.log('🎙️ =================================')
       
+      // 이미 설정되어 있다면 정리 후 재설정
+      if (audioStreamRef.current || audioContextRef.current || processorRef.current) {
+        console.log('🔄 기존 오디오 설정 정리 중...')
+        if (audioStreamRef.current) {
+          audioStreamRef.current.getTracks().forEach(track => track.stop())
+          audioStreamRef.current = null
+        }
+        if (audioContextRef.current) {
+          audioContextRef.current.close()
+          audioContextRef.current = null
+        }
+        if (processorRef.current) {
+          processorRef.current.disconnect()
+          processorRef.current = null
+        }
+        setProcessorActive(false)
+        setAudioLevel(0)
+        setVoiceDetected(false)
+      }
+      
+      console.log('1️⃣ 마이크 권한 요청 중...')
       // 마이크 권한 요청
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -171,46 +225,53 @@ export default function GeminiRealtimeVoiceInterview({
         }
       })
       
-      console.log('✅ 마이크 권한 허용됨')
-      console.log('🔍 오디오 스트림 정보:', {
-        활성트랙수: stream.getAudioTracks().length,
-        트랙상태: stream.getAudioTracks().map(track => ({
+      console.log('✅ 마이크 권한 허용됨!')
+      console.log('2️⃣ 스트림 정보 분석 중...')
+      console.log('활성 트랙 수:', stream.getAudioTracks().length)
+      
+      stream.getAudioTracks().forEach((track, index) => {
+        console.log(`트랙 ${index + 1}:`, {
           라벨: track.label,
           활성화: track.enabled,
-          준비상태: track.readyState
-        }))
+          준비상태: track.readyState,
+          설정: track.getSettings()
+        })
       })
       
       audioStreamRef.current = stream
 
+      console.log('3️⃣ AudioContext 생성 중...')
       // AudioContext 설정 (브라우저 호환성)
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
       const audioContext = new AudioContextClass({
         sampleRate: 16000
       })
       
-      console.log('🔊 AudioContext 상태:', audioContext.state)
+      console.log('AudioContext 생성됨, 상태:', audioContext.state)
+      console.log('샘플레이트:', audioContext.sampleRate)
       
       // AudioContext가 suspended 상태면 resume
       if (audioContext.state === 'suspended') {
-        console.log('⏯️ AudioContext resume 중...')
+        console.log('4️⃣ AudioContext 활성화 중...')
         await audioContext.resume()
-        console.log('✅ AudioContext 활성화됨:', audioContext.state)
+        console.log('AudioContext 활성화됨, 현재 상태:', audioContext.state)
       }
       
       audioContextRef.current = audioContext
 
+      console.log('5️⃣ 오디오 노드 생성 중...')
       const source = audioContext.createMediaStreamSource(stream)
-      console.log('🎵 MediaStreamSource 생성됨')
+      console.log('MediaStreamSource 생성됨')
       
       // ScriptProcessorNode 생성 (더 큰 버퍼 사이즈 사용)
       const processor = audioContext.createScriptProcessor(4096, 1, 1)
       processorRef.current = processor
-      console.log('⚙️ ScriptProcessorNode 생성됨 (버퍼 크기: 4096)')
+      console.log('ScriptProcessorNode 생성됨 (버퍼 크기: 4096)')
 
       let audioSendCount = 0
       let processorCallCount = 0
       
+      console.log('6️⃣ 오디오 프로세서 이벤트 핸들러 설정 중...')
       processor.onaudioprocess = (event) => {
         processorCallCount++
         
@@ -272,14 +333,21 @@ export default function GeminiRealtimeVoiceInterview({
         }
       }
 
+      console.log('7️⃣ 오디오 노드 연결 중...')
       source.connect(processor)
       // processor를 destination에 연결하지 않음 (오디오 캡처만 목적, 피드백 방지)
       
-      console.log('🔗 오디오 노드 연결 완료')
-      console.log('✅ 마이크 설정 완료! 녹음 시작 버튼을 눌러주세요.')
+      console.log('✅ 오디오 노드 연결 완료!')
+      console.log('✅ 마이크 설정 완료!')
+      console.log('🎙️ =================================')
 
     } catch (error) {
+      console.log('❌ =================================')
       console.error('❌ 오디오 설정 오류:', error)
+      console.error('에러 이름:', error.name)
+      console.error('에러 메시지:', error.message)
+      console.log('❌ =================================')
+      
       setConnectionStatus('마이크 접근 실패: ' + error.message)
       
       // 구체적인 오류 메시지 표시
@@ -474,20 +542,30 @@ export default function GeminiRealtimeVoiceInterview({
     
     console.log('🔴 녹음 시작 버튼 클릭됨')
     
-    // AudioContext가 suspended 상태면 사용자 제스처로 활성화
-    if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
-      console.log('⏯️ 사용자 제스처로 AudioContext 활성화 중...')
-      try {
-        await audioContextRef.current.resume()
-        console.log('✅ AudioContext 활성화됨:', audioContextRef.current.state)
-      } catch (error) {
-        console.error('❌ AudioContext 활성화 실패:', error)
+    try {
+      // 오디오 캡처 설정 (매번 새로 설정)
+      console.log('🎙️ 녹음 시작 전 오디오 캡처 설정...')
+      await setupAudioCapture()
+      
+      // AudioContext가 suspended 상태면 사용자 제스처로 활성화
+      if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+        console.log('⏯️ 사용자 제스처로 AudioContext 활성화 중...')
+        try {
+          await audioContextRef.current.resume()
+          console.log('✅ AudioContext 활성화됨:', audioContextRef.current.state)
+        } catch (error) {
+          console.error('❌ AudioContext 활성화 실패:', error)
+        }
       }
+      
+      setIsRecording(true)
+      setConnectionStatus('음성 녹음 중... 마이크에 대고 말해보세요!')
+      console.log('🎙️ 녹음 상태 활성화 완료')
+      
+    } catch (error) {
+      console.error('❌ 녹음 시작 실패:', error)
+      setConnectionStatus('녹음 시작 실패: ' + error.message)
     }
-    
-    setIsRecording(true)
-    setConnectionStatus('음성 녹음 중... 마이크에 대고 말해보세요!')
-    console.log('🎙️ 녹음 상태 활성화 완료')
   }
 
   const stopRecording = () => {
@@ -496,68 +574,119 @@ export default function GeminiRealtimeVoiceInterview({
   }
 
   const testMicrophone = async () => {
-    console.log('🔍 마이크 테스트 시작...')
+    // 가장 기본적인 로그부터 시작
+    console.log('🚀 =================================')
+    console.log('🚀 마이크 테스트 함수 호출됨!')
+    console.log('🚀 =================================')
+    
     try {
-      // 실제 사용과 동일한 설정으로 마이크 테스트
+      // 단계별 상세 디버깅
+      console.log('1️⃣ 브라우저 API 지원 확인 중...')
+      if (!navigator.mediaDevices) {
+        throw new Error('navigator.mediaDevices 지원되지 않음')
+      }
+      if (!navigator.mediaDevices.getUserMedia) {
+        throw new Error('getUserMedia 지원되지 않음')
+      }
+      console.log('✅ 브라우저 API 지원 확인됨')
+      
+      console.log('2️⃣ 보안 컨텍스트 확인 중...')
+      console.log('현재 URL:', window.location.href)
+      console.log('프로토콜:', window.location.protocol)
+      console.log('보안 컨텍스트:', window.isSecureContext)
+      
+      console.log('3️⃣ 마이크 권한 요청 중... (팝업이 나타날 수 있습니다)')
+      // 가장 기본적인 설정으로 먼저 시도
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          sampleRate: 16000,
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true
-        }
+        audio: true
       })
-      console.log('✅ 마이크 접근 성공!')
-      console.log('🎵 오디오 트랙 정보:', stream.getAudioTracks().map(track => ({
-        라벨: track.label,
-        활성화: track.enabled,
-        준비상태: track.readyState,
-        설정: track.getSettings()
-      })))
       
-      // AudioContext로 레벨 측정 (실제 사용과 동일한 설정)
+      console.log('✅ 마이크 권한 허용됨!')
+      console.log('4️⃣ 스트림 정보 분석 중...')
+      console.log('총 오디오 트랙 수:', stream.getAudioTracks().length)
+      
+      stream.getAudioTracks().forEach((track, index) => {
+        console.log(`트랙 ${index + 1}:`, {
+          라벨: track.label,
+          활성화: track.enabled,
+          준비상태: track.readyState,
+          종류: track.kind,
+          설정: track.getSettings()
+        })
+      })
+      
+      console.log('5️⃣ AudioContext 생성 중...')
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
-      const testContext = new AudioContextClass({ sampleRate: 16000 })
+      if (!AudioContextClass) {
+        throw new Error('AudioContext가 지원되지 않습니다')
+      }
       
-      console.log('🔊 테스트 AudioContext 상태:', testContext.state)
+      const testContext = new AudioContextClass()
+      console.log('AudioContext 생성됨, 초기 상태:', testContext.state)
+      console.log('샘플레이트:', testContext.sampleRate)
       
       if (testContext.state === 'suspended') {
-        console.log('⏯️ 테스트 AudioContext resume 중...')
+        console.log('6️⃣ AudioContext 활성화 중...')
         await testContext.resume()
-        console.log('✅ 테스트 AudioContext 활성화됨:', testContext.state)
+        console.log('AudioContext 활성화됨, 현재 상태:', testContext.state)
       }
       
+      console.log('7️⃣ 오디오 노드 생성 중...')
       const source = testContext.createMediaStreamSource(stream)
-      const processor = testContext.createScriptProcessor(4096, 1, 1)
+      console.log('MediaStreamSource 생성됨')
       
-      source.connect(processor)
-      // processor를 destination에 연결하지 않음
+      const analyser = testContext.createAnalyser()
+      analyser.fftSize = 256
+      console.log('AnalyserNode 생성됨')
       
-      let testCount = 0
-      processor.onaudioprocess = (event) => {
-        const inputBuffer = event.inputBuffer.getChannelData(0)
+      source.connect(analyser)
+      console.log('노드 연결 완료')
+      
+      console.log('8️⃣ 10초간 마이크 레벨 측정 시작...')
+      const bufferLength = analyser.frequencyBinCount
+      const dataArray = new Uint8Array(bufferLength)
+      
+      let measurementCount = 0
+      const maxMeasurements = 50 // 10초간 (200ms 간격)
+      
+      const measureInterval = setInterval(() => {
+        analyser.getByteFrequencyData(dataArray)
+        const average = dataArray.reduce((a, b) => a + b) / bufferLength
+        const max = Math.max(...dataArray)
         
-        // 실제 사용과 동일한 RMS 계산
-        let sum = 0
-        for (let i = 0; i < inputBuffer.length; i++) {
-          sum += inputBuffer[i] * inputBuffer[i]
-        }
-        const rmsLevel = Math.sqrt(sum / inputBuffer.length)
-        const maxLevel = Math.max(...inputBuffer.map(Math.abs))
+        measurementCount++
+        console.log(`📊 측정 #${measurementCount}/50: 평균=${average.toFixed(2)}, 최대=${max}`)
         
-        testCount++
-        console.log(`🎤 마이크 테스트 #${testCount}, RMS: ${rmsLevel.toFixed(6)}, Max: ${maxLevel.toFixed(6)}`)
-        
-        if (testCount >= 20) {
-          processor.disconnect()
-          stream.getTracks().forEach(track => track.stop())
+        if (measurementCount >= maxMeasurements) {
+          console.log('9️⃣ 테스트 정리 중...')
+          clearInterval(measureInterval)
+          source.disconnect()
+          stream.getTracks().forEach(track => {
+            console.log(`트랙 ${track.label} 정지 중...`)
+            track.stop()
+          })
           testContext.close()
-          console.log('✅ 마이크 테스트 완료')
+          console.log('✅ 마이크 테스트 완료!')
+          console.log('🚀 =================================')
         }
-      }
+      }, 200)
       
     } catch (error) {
+      console.log('❌ =================================')
       console.error('❌ 마이크 테스트 실패:', error)
+      console.error('에러 이름:', error.name)
+      console.error('에러 메시지:', error.message)
+      console.error('전체 에러 객체:', error)
+      console.log('❌ =================================')
+      
+      // 특정 에러에 대한 추가 정보
+      if (error.name === 'NotAllowedError') {
+        console.error('🚫 마이크 권한이 거부되었습니다. 브라우저 설정을 확인해주세요.')
+      } else if (error.name === 'NotFoundError') {
+        console.error('🎤 마이크 장치를 찾을 수 없습니다.')
+      } else if (error.name === 'NotSupportedError') {
+        console.error('🌐 현재 브라우저에서 지원되지 않는 기능입니다.')
+      }
     }
   }
 
@@ -766,7 +895,7 @@ export default function GeminiRealtimeVoiceInterview({
               onClick={testMicrophone}
               className="bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
             >
-              🔍 마이크 테스트 (콘솔 확인)
+              🔍 마이크 테스트 (F12 콘솔 필수 확인!)
             </button>
             
             {/* 텍스트 테스트 버튼 */}
