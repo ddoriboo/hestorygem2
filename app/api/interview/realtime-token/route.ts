@@ -4,7 +4,7 @@ import { getSessionPrompt } from '@/lib/session-prompts'
 
 export const runtime = 'nodejs'
 
-// OpenAI Realtime API 세션 생성
+// Gemini Live API 세션 생성
 export async function POST(request: NextRequest) {
   try {
     const token = request.cookies.get('auth-token')?.value
@@ -23,22 +23,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '유효하지 않은 세션 번호입니다.' }, { status: 400 })
     }
 
-    const openaiApiKey = process.env.OPENAI_API_KEY
-    if (!openaiApiKey) {
-      return NextResponse.json({ error: 'OpenAI API 키가 설정되지 않았습니다.' }, { status: 500 })
+    const googleApiKey = process.env.GOOGLE_API_KEY
+    if (!googleApiKey) {
+      return NextResponse.json({ error: 'Google API 키가 설정되지 않았습니다.' }, { status: 500 })
     }
 
     // 세션별 상세 프롬프트 사용
     const sessionPrompt = getSessionPrompt(sessionNumber)
 
-    // OpenAI API 키와 설정을 클라이언트에 안전하게 전달
-    // (실제 세션 생성은 클라이언트에서 WebRTC 연결 시 진행)
+    // Gemini API 키와 설정을 클라이언트에 안전하게 전달
     
     return NextResponse.json({ 
-      apiKey: openaiApiKey,
+      apiKey: googleApiKey,
       sessionPrompt: sessionPrompt + "\n\n말할 때는 자연스럽고 빠르게 말해주세요.",
-      model: 'gpt-4o-realtime-preview-2024-10-01',
-      voice: 'sage'
+      model: 'gemini-2.5-flash-preview-native-audio-dialog'
     })
 
   } catch (error) {

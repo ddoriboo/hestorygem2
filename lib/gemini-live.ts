@@ -1,15 +1,21 @@
-import { GoogleGenAI, Modality } from '@google/genai'
-
 // Gemini Live API 클라이언트 (공식 가이드 기반)
 export class GeminiLiveClient {
-  private ai: GoogleGenAI
+  private ai: any
   private session: any = null
   private isConnected = false
   private responseQueue: any[] = []
   private messageHandlers: ((data: any) => void)[] = []
 
   constructor(apiKey: string) {
-    this.ai = new GoogleGenAI({ apiKey })
+    // 동적 import로 클라이언트 사이드에서만 초기화
+    this.initializeAI(apiKey)
+  }
+
+  private async initializeAI(apiKey: string) {
+    if (typeof window !== 'undefined') {
+      const { GoogleGenAI } = await import('@google/genai')
+      this.ai = new GoogleGenAI({ apiKey })
+    }
   }
 
   // 메시지 대기 함수 (공식 가이드 패턴)
@@ -50,6 +56,14 @@ export class GeminiLiveClient {
       const model = config.model || 'gemini-2.5-flash-preview-native-audio-dialog'
       
       console.log('Gemini Live 연결 시도:', model)
+      
+      // AI 초기화 확인
+      if (!this.ai) {
+        await this.initializeAI(process.env.GOOGLE_API_KEY || '')
+      }
+
+      // Modality 동적 import
+      const { Modality } = await import('@google/genai')
       
       // Gemini Live API 연결 (공식 가이드 패턴)
       this.session = await this.ai.live.connect({

@@ -26,11 +26,12 @@ export async function POST(request: NextRequest) {
     // 세션 프롬프트 가져오기
     const sessionPrompt = getSessionPrompt(sessionNumber)
 
-    // OpenAI API 키 반환 (클라이언트에서 직접 연결)
+    // Gemini API 키 반환 (클라이언트에서 직접 연결)
     return NextResponse.json({
-      apiKey: process.env.OPENAI_API_KEY,
+      apiKey: process.env.GOOGLE_API_KEY,
       sessionPrompt,
-      sessionNumber
+      sessionNumber,
+      model: 'gemini-2.5-flash-preview-native-audio-dialog'
     })
 
   } catch (error) {
