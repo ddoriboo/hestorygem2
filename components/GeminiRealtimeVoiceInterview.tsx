@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import dynamic from 'next/dynamic'
 import { float32ToInt16, int16ToFloat32 } from '@/lib/audio-utils'
-import { GeminiLiveClient } from '@/lib/gemini-live'
 
 interface GeminiRealtimeVoiceInterviewProps {
   sessionNumber: number
@@ -26,8 +26,8 @@ export default function GeminiRealtimeVoiceInterview({
   const [connectionStatus, setConnectionStatus] = useState('연결 준비 중...')
   const [isAISpeaking, setIsAISpeaking] = useState(false)
 
-  // Session and Audio refs
-  const geminiClientRef = useRef<GeminiLiveClient | null>(null)
+  // Gemini Live refs
+  const geminiClientRef = useRef<any>(null)
   const audioStreamRef = useRef<MediaStream | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const processorRef = useRef<ScriptProcessorNode | null>(null)
@@ -36,7 +36,7 @@ export default function GeminiRealtimeVoiceInterview({
     return () => {
       disconnect()
     }
-  }, [disconnect])
+  }, [])
 
   const connectToGemini = useCallback(async () => {
     try {
@@ -49,33 +49,53 @@ export default function GeminiRealtimeVoiceInterview({
       }
       const config = await configResponse.json()
 
-      // Gemini Live 클라이언트 초기화
-      const client = new GeminiLiveClient(config.apiKey)
-      geminiClientRef.current = client
-
-      // 메시지 핸들러 설정
-      client.onMessage((response) => {
-        handleGeminiResponse(response)
+      // Dynamic import로 Gemini SDK 로드 (클라이언트 사이드에서만)
+      const { GoogleGenAI, Modality } = await import('@google/genai')
+      
+      // Gemini AI 초기화
+      const genAI = new GoogleGenAI({ apiKey: config.apiKey })
+      
+      // Live API 연결
+      const session = await genAI.live.connect({
+        model: "models/gemini-2.5-flash-preview-native-audio-dialog",
+        config: {
+          responseModalities: [Modality.AUDIO],
+          systemInstruction: config.sessionPrompt,
+          inputAudioTranscription: {},
+          outputAudioTranscription: {}
+        },
+        callbacks: {
+          onopen: () => {
+            console.log('Gemini Live 연결 성공')
+            setIsConnected(true)
+            setConnectionStatus('음성 인터뷰 준비 완료')
+          },
+          onmessage: (message: any) => {
+            console.log('Gemini Live 메시지:', message)
+            handleGeminiResponse(message)
+          },
+          onerror: (error: any) => {
+            console.error('Gemini Live 오류:', error)
+            setConnectionStatus(`연결 오류: ${error.message || '알 수 없는 오류'}`)
+          },
+          onclose: (reason: any) => {
+            console.log('Gemini Live 연결 종료:', reason)
+            setIsConnected(false)
+            setConnectionStatus('연결 종료됨')
+          }
+        }
       })
 
-      // 연결
-      await client.connect({
-        model: config.model,
-        systemPrompt: config.sessionPrompt,
-        responseModalities: ['AUDIO', 'TEXT']
-      })
+      geminiClientRef.current = session
 
       // 오디오 설정
       await setupAudioCapture()
-
-      setIsConnected(true)
-      setConnectionStatus('음성 인터뷰 준비 완료')
 
     } catch (error) {
       console.error('Gemini 연결 오류:', error)
       setConnectionStatus(`연결 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`)
     }
-  }, [sessionNumber, setupAudioCapture, handleGeminiResponse])
+  }, [sessionNumber, handleGeminiResponse])
 
   const setupAudioCapture = async () => {
     try {
@@ -126,70 +146,88 @@ export default function GeminiRealtimeVoiceInterview({
     if (!geminiClientRef.current) return
     
     try {
-      await geminiClientRef.current.sendAudio(audioData)
+      // Int16Array를 Base64로 변환
+      const bytes = new Uint8Array(audioData.buffer)
+      const base64Audio = btoa(String.fromCharCode(...bytes))
+      
+      // Gemini Live API에 오디오 전송
+      geminiClientRef.current.sendRealtimeInput({
+        audio: {
+          data: base64Audio,
+          mimeType: "audio/pcm;rate=16000"
+        }
+      })
     } catch (error) {
       console.error('오디오 전송 오류:', error)
     }
   }
 
 
-  const handleGeminiResponse = useCallback((response: any) => {
-    console.log('Gemini 응답:', response)
+  const handleGeminiResponse = useCallback((message: any) => {
+    console.log('Gemini 응답:', message)
     
-    switch (response.type) {
-      case 'connected':
-        console.log('Gemini Live 연결됨:', response.message)
-        break
-        
-      case 'text_response':
-        if (response.text) {
-          const assistantMessage: Conversation = {
-            role: 'assistant',
-            content: response.text,
-            timestamp: new Date(),
-            audioComplete: true
-          }
-          setConversations(prev => [...prev, assistantMessage])
-        }
-        break
-        
-      case 'audio_response':
-        if (response.audioData) {
-          try {
-            // Base64 디코딩 후 오디오 재생
-            const binaryString = atob(response.audioData)
-            const bytes = new Uint8Array(binaryString.length)
-            for (let i = 0; i < binaryString.length; i++) {
-              bytes[i] = binaryString.charCodeAt(i)
+    // Gemini Live API 메시지 처리
+    if (message.serverContent) {
+      const content = message.serverContent
+      
+      // 텍스트 응답 처리
+      if (content.modelTurn && content.modelTurn.parts) {
+        for (const part of content.modelTurn.parts) {
+          if (part.text) {
+            const assistantMessage: Conversation = {
+              role: 'assistant',
+              content: part.text,
+              timestamp: new Date(),
+              audioComplete: true
             }
-            const int16Data = new Int16Array(bytes.buffer)
-            playAudioData(Array.from(int16Data))
-            setIsAISpeaking(true)
-          } catch (error) {
-            console.error('오디오 데이터 처리 오류:', error)
+            setConversations(prev => [...prev, assistantMessage])
+          }
+          
+          // 오디오 응답 처리
+          if (part.inlineData && part.inlineData.mimeType === 'audio/pcm') {
+            try {
+              // Base64 디코딩 후 오디오 재생
+              const binaryString = atob(part.inlineData.data)
+              const bytes = new Uint8Array(binaryString.length)
+              for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i)
+              }
+              const int16Data = new Int16Array(bytes.buffer)
+              playAudioData(Array.from(int16Data))
+              setIsAISpeaking(true)
+            } catch (error) {
+              console.error('오디오 데이터 처리 오류:', error)
+            }
           }
         }
-        break
-        
-      case 'raw_response':
-        // 원시 Gemini 응답 - 디버깅용
-        console.log('원시 Gemini 응답:', response.data)
-        break
-        
-      case 'error':
-        console.error('Gemini 오류:', response.message)
-        setConnectionStatus(`오류: ${response.message}`)
-        if (response.details) {
-          console.error('오류 세부사항:', response.details)
+      }
+      
+      // 턴 완료 처리
+      if (content.turnComplete) {
+        console.log('턴 완료')
+        setIsAISpeaking(false)
+      }
+    }
+    
+    // 사용자 메시지 처리
+    if (message.clientContent) {
+      const content = message.clientContent
+      if (content.turns && content.turns.length > 0) {
+        for (const turn of content.turns) {
+          if (turn.role === 'user' && turn.parts) {
+            for (const part of turn.parts) {
+              if (part.text) {
+                const userMessage: Conversation = {
+                  role: 'user',
+                  content: part.text,
+                  timestamp: new Date()
+                }
+                setConversations(prev => [...prev, userMessage])
+              }
+            }
+          }
         }
-        break
-        
-      case 'heartbeat':
-        // 연결 유지 확인
-        break
-        
-      default:
-        console.log('처리되지 않은 응답:', response)
+      }
     }
   }, [])
 
@@ -220,14 +258,14 @@ export default function GeminiRealtimeVoiceInterview({
 
 
   const disconnect = useCallback(async () => {
-    console.log('Gemini 연결 해제 중...')
+    console.log('Gemini Live 연결 해제 중...')
 
-    // Gemini 클라이언트 해제
+    // Gemini Live 세션 해제
     if (geminiClientRef.current) {
       try {
-        await geminiClientRef.current.disconnect()
+        geminiClientRef.current.close()
       } catch (error) {
-        console.error('Gemini 클라이언트 종료 오류:', error)
+        console.error('Gemini Live 세션 종료 오류:', error)
       }
       geminiClientRef.current = null
     }
