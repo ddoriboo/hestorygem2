@@ -426,36 +426,47 @@ export default function GeminiRealtimeVoiceInterview({
     return int16Array
   }
 
-  // RAW PCM 데이터를 Gemini Live API에 전송 (올바른 형식)
+  // Python 패턴과 동일하게 RAW PCM 데이터 전송
   const sendPCMToGemini = async (pcmData: Int16Array) => {
     try {
-      // Int16Array를 Uint8Array로 변환 (바이트 단위)
+      // Int16Array를 Uint8Array로 변환 (Python의 raw bytes와 동일)
       const bytes = new Uint8Array(pcmData.buffer)
       
-      // Base64 인코딩 (청크 단위로 처리하여 브라우저 호환성 개선)
-      let base64Audio = ''
-      const chunkSize = 1024
-      for (let i = 0; i < bytes.length; i += chunkSize) {
-        const chunk = bytes.slice(i, i + chunkSize)
-        base64Audio += btoa(String.fromCharCode.apply(null, Array.from(chunk)))
-      }
-      
-      console.log(`📤 RAW PCM 데이터 Gemini 전송: ${pcmData.length} samples, ${bytes.length} bytes`)
+      console.log(`📤 Python 패턴으로 PCM 전송: ${pcmData.length} samples, ${bytes.length} bytes`)
       
       if (sessionRef.current) {
-        await sessionRef.current.sendRealtimeInput({
-          audio: {
-            data: base64Audio,
-            mimeType: "audio/pcm;rate=16000" // 올바른 PCM 형식!
+        // Python 코드와 동일한 패턴: session.send(input=msg)
+        // msg = {"data": data, "mime_type": "audio/pcm"}
+        await sessionRef.current.send({
+          input: {
+            data: bytes,  // Base64 인코딩 없이 raw bytes
+            mime_type: "audio/pcm"  // rate 정보 없이 단순한 형식
           }
         })
-        console.log(`✅ PCM 데이터 전송 성공!`)
+        console.log(`✅ Python 패턴 PCM 전송 성공!`)
       } else {
         console.log(`❌ Gemini 세션이 없어서 PCM 전송 실패`)
       }
       
     } catch (error) {
-      console.error('❌ PCM 데이터 전송 실패:', error)
+      console.error('❌ Python 패턴 PCM 전송 실패:', error)
+      
+      // 대안: 기존 방식도 시도
+      try {
+        console.log('🔄 기존 방식으로 재시도...')
+        
+        const base64Audio = btoa(String.fromCharCode.apply(null, Array.from(bytes)))
+        
+        await sessionRef.current.sendRealtimeInput({
+          audio: {
+            data: base64Audio,
+            mimeType: "audio/pcm"
+          }
+        })
+        console.log(`✅ 기존 방식 PCM 전송 성공!`)
+      } catch (fallbackError) {
+        console.error('❌ 기존 방식도 실패:', fallbackError)
+      }
     }
   }
 
