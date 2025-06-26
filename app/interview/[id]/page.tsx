@@ -2,10 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import VoiceInterview from '@/components/VoiceInterview'
-import TextInterview from '@/components/TextInterview'
-import RealtimeVoiceInterview from '@/components/RealtimeVoiceInterview'
-import OpenAIRealtimeVoiceInterview from '@/components/OpenAIRealtimeVoiceInterview'
+import GeminiRealtimeVoiceInterview from '@/components/GeminiRealtimeVoiceInterview'
+import GeminiTextInterview from '@/components/GeminiTextInterview'
 
 interface Conversation {
   id: string
@@ -155,15 +153,20 @@ export default function InterviewPage() {
           </div>
         )}
 
-        {/* OpenAI Realtime API 음성 인터뷰 */}
-        <OpenAIRealtimeVoiceInterview
+        {/* Gemini Live 실시간 음성 인터뷰 */}
+        <GeminiRealtimeVoiceInterview
           sessionNumber={session?.sessionNumber || 1}
           onConversationSave={saveConversation}
         />
         
-        {/* 텍스트 기반 인터뷰 (대안) */}
+        {/* Gemini 텍스트 기반 인터뷰 (대안) */}
         <div className="mt-6">
-          <TextInterview
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+            <p className="text-blue-800 text-sm">
+              💬 음성이 불편하시면 아래 텍스트 인터뷰를 이용하실 수 있습니다.
+            </p>
+          </div>
+          <GeminiTextInterview
             sessionNumber={session?.sessionNumber || 1}
             onConversationSave={saveConversation}
           />
