@@ -23,6 +23,8 @@ export default function GeminiRealtimeVoiceInterview({
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [connectionStatus, setConnectionStatus] = useState('연결 준비 중...')
   const [isAISpeaking, setIsAISpeaking] = useState(false)
+  const [audioLevel, setAudioLevel] = useState(0)
+  const [voiceDetected, setVoiceDetected] = useState(false)
 
   // Refs
   const sessionRef = useRef<any>(null)
@@ -127,9 +129,7 @@ export default function GeminiRealtimeVoiceInterview({
           },
           onmessage: (message: any) => {
             console.log('Gemini Live 메시지:', message)
-            // 공식 예제 패턴: 메시지를 큐에 추가
-            responseQueueRef.current.push(message)
-            // 즉시 UI 업데이트를 위한 핸들러 호출
+            // 실시간 스트리밍용 즉시 처리
             handleGeminiMessage(message)
           },
           onerror: (error: any) => {
@@ -180,21 +180,39 @@ export default function GeminiRealtimeVoiceInterview({
       const processor = audioContext.createScriptProcessor(1024, 1, 1)
       processorRef.current = processor
 
+      let audioSendCount = 0
       processor.onaudioprocess = (event) => {
         if (isRecording && sessionRef.current) {
           const inputBuffer = event.inputBuffer.getChannelData(0)
           
           // 오디오 레벨 확인 (소리가 들어오는지 체크)
-          const audioLevel = Math.max(...inputBuffer.map(Math.abs))
-          if (audioLevel > 0.01) {
-            console.log('오디오 감지됨, 레벨:', audioLevel.toFixed(4))
+          const currentAudioLevel = Math.max(...inputBuffer.map(Math.abs))
+          
+          // UI 업데이트 (실시간 오디오 레벨 표시)
+          setAudioLevel(currentAudioLevel)
+          
+          // 일정 레벨 이상의 소리만 전송 (배경 노이즈 필터링)
+          if (currentAudioLevel > 0.02) {
+            audioSendCount++
+            setVoiceDetected(true)
+            console.log(`🎤 음성 감지됨 #${audioSendCount}, 레벨: ${currentAudioLevel.toFixed(4)}`)
+            
+            // Float32 to Int16 conversion
+            const pcmData = float32ToInt16(inputBuffer)
+            
+            // Gemini Live API에 오디오 데이터 전송
+            sendAudioToGemini(pcmData)
+            
+            // 음성 감지 상태를 잠시 유지
+            setTimeout(() => setVoiceDetected(false), 500)
+          } else if (currentAudioLevel > 0.005) {
+            // 작은 소리도 감지하여 로그
+            console.log(`🔇 작은 소리 감지, 레벨: ${currentAudioLevel.toFixed(4)} (전송 안함)`)
           }
-          
-          // Float32 to Int16 conversion
-          const pcmData = float32ToInt16(inputBuffer)
-          
-          // Gemini Live API에 오디오 데이터 전송
-          sendAudioToGemini(pcmData)
+        } else {
+          // 녹음 중이 아닐 때는 레벨 0으로 설정
+          setAudioLevel(0)
+          setVoiceDetected(false)
         }
       }
 
@@ -217,57 +235,48 @@ export default function GeminiRealtimeVoiceInterview({
     return int16Array
   }
 
+  let audioTransmissionCount = 0
   const sendAudioToGemini = async (audioData: Int16Array) => {
     if (!sessionRef.current) {
       console.log('세션이 없음, 오디오 전송 건너뜀')
       return
     }
     
+    audioTransmissionCount++
+    
     try {
-      // 공식 예제 패턴: Int16Array를 base64로 변환
-      const buffer = Buffer.from(audioData.buffer)
-      const base64Audio = buffer.toString('base64')
+      // 브라우저 호환성을 위해 직접 base64 변환
+      const bytes = new Uint8Array(audioData.buffer)
+      let base64Audio = ''
+      const chunkSize = 1024
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        const chunk = bytes.slice(i, i + chunkSize)
+        base64Audio += btoa(String.fromCharCode.apply(null, Array.from(chunk)))
+      }
       
-      // 전송 로그
-      console.log('오디오 전송 중...', {
-        크기: audioData.length,
-        바이트: audioData.buffer.byteLength,
-        base64길이: base64Audio.length
-      })
+      // 전송 로그 (매번이 아닌 주기적으로)
+      if (audioTransmissionCount % 20 === 1) {
+        console.log(`오디오 전송 #${audioTransmissionCount}`, {
+          크기: audioData.length,
+          바이트: audioData.buffer.byteLength,
+          base64길이: base64Audio.length
+        })
+      }
       
-      // 공식 예제와 동일한 형식으로 전송
-      sessionRef.current.sendRealtimeInput({
+      // Gemini Live API에 전송
+      await sessionRef.current.sendRealtimeInput({
         audio: {
           data: base64Audio,
           mimeType: "audio/pcm;rate=16000"
         }
       })
       
-      console.log('오디오 전송 완료')
-    } catch (error) {
-      console.error('오디오 전송 오류:', error)
-      
-      // 브라우저에서 Buffer가 없을 경우 대안 방식
-      try {
-        console.log('대안 방식으로 재시도...')
-        const bytes = new Uint8Array(audioData.buffer)
-        let base64Audio = ''
-        const chunkSize = 8192
-        for (let i = 0; i < bytes.length; i += chunkSize) {
-          const chunk = bytes.slice(i, i + chunkSize)
-          base64Audio += btoa(String.fromCharCode.apply(null, Array.from(chunk)))
-        }
-        
-        sessionRef.current.sendRealtimeInput({
-          audio: {
-            data: base64Audio,
-            mimeType: "audio/pcm;rate=16000"
-          }
-        })
-        console.log('대안 방식으로 전송 성공')
-      } catch (retryError) {
-        console.error('재시도도 실패:', retryError)
+      // 성공 로그 (주기적으로)
+      if (audioTransmissionCount % 20 === 1) {
+        console.log(`오디오 전송 성공 #${audioTransmissionCount}`)
       }
+    } catch (error) {
+      console.error(`오디오 전송 실패 #${audioTransmissionCount}:`, error)
     }
   }
 
@@ -416,25 +425,44 @@ export default function GeminiRealtimeVoiceInterview({
       console.log('테스트 메시지 전송 중...')
       setIsAISpeaking(true)
       
+      // 배치 모드용 별도 큐 초기화
+      const batchQueue: any[] = []
+      let isWaiting = true
+      
+      // 임시 메시지 핸들러
+      const originalOnMessage = sessionRef.current.onmessage
+      sessionRef.current.onmessage = (message: any) => {
+        console.log('배치 모드 메시지:', message)
+        batchQueue.push(message)
+        
+        if (message.serverContent && message.serverContent.turnComplete) {
+          isWaiting = false
+        }
+      }
+      
       // 텍스트 메시지 전송
       await sessionRef.current.sendClientContent({
         turns: [{ role: "user", parts: [{ text: "안녕하세요! 간단한 인사말을 해주세요." }] }],
         turnComplete: true
       })
-      console.log('테스트 메시지 전송 완료')
+      console.log('테스트 메시지 전송 완료, 응답 대기 중...')
 
-      // 공식 예제 패턴: 응답 대기
-      console.log('AI 응답 대기 중...')
-      const turns = await handleTurn()
-      console.log('AI 응답 수신:', turns)
+      // 응답 대기
+      while (isWaiting) {
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+      
+      // 원래 핸들러 복구
+      sessionRef.current.onmessage = originalOnMessage
+      
+      console.log('배치 응답 수신 완료, 총 메시지:', batchQueue.length)
 
       // 응답 처리
       let combinedAudio: number[] = []
-      for (const turn of turns) {
-        if (turn.data) {
-          console.log('오디오 데이터 수신, 크기:', turn.data.length)
-          // Base64 데이터를 Int16Array로 변환
-          const binaryString = atob(turn.data)
+      for (const message of batchQueue) {
+        if (message.data) {
+          console.log('오디오 데이터 수신, 크기:', message.data.length)
+          const binaryString = atob(message.data)
           const bytes = new Uint8Array(binaryString.length)
           for (let i = 0; i < binaryString.length; i++) {
             bytes[i] = binaryString.charCodeAt(i)
@@ -447,9 +475,11 @@ export default function GeminiRealtimeVoiceInterview({
       if (combinedAudio.length > 0) {
         console.log('오디오 재생 시작, 전체 크기:', combinedAudio.length)
         playAudioData(combinedAudio)
+      } else {
+        console.log('오디오 데이터 없음, 텍스트만 응답됨')
+        setIsAISpeaking(false)
       }
 
-      setIsAISpeaking(false)
     } catch (error) {
       console.error('테스트 메시지 전송 오류:', error)
       setIsAISpeaking(false)
@@ -512,12 +542,42 @@ export default function GeminiRealtimeVoiceInterview({
         )}
       </div>
 
-      {/* 연결 상태 표시 */}
-      <div className="flex items-center justify-center mb-4 sm:mb-6">
-        <div className={`w-3 h-3 rounded-full mr-2 ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
-        <span className="text-sm text-gray-600">
-          {isConnected ? '연결됨' : '연결 안됨'}
-        </span>
+      {/* 연결 상태 및 음성 활동 표시 */}
+      <div className="flex flex-col items-center justify-center mb-4 sm:mb-6">
+        <div className="flex items-center mb-3">
+          <div className={`w-3 h-3 rounded-full mr-2 ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
+          <span className="text-sm text-gray-600">
+            {isConnected ? '연결됨' : '연결 안됨'}
+          </span>
+        </div>
+        
+        {/* 음성 활동 표시 */}
+        {isRecording && (
+          <div className="flex flex-col items-center space-y-2">
+            <div className="flex items-center space-x-3">
+              <span className="text-xs text-gray-500">마이크 레벨:</span>
+              <div className="w-32 h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div 
+                  className={`h-full transition-all duration-100 ${
+                    voiceDetected ? 'bg-green-500' : 'bg-blue-400'
+                  }`}
+                  style={{ width: `${Math.min(100, audioLevel * 1000)}%` }}
+                ></div>
+              </div>
+              <span className="text-xs text-gray-500">
+                {(audioLevel * 100).toFixed(1)}%
+              </span>
+            </div>
+            
+            <div className={`px-3 py-1 rounded-full text-xs font-medium ${
+              voiceDetected 
+                ? 'bg-green-100 text-green-800' 
+                : 'bg-gray-100 text-gray-600'
+            }`}>
+              {voiceDetected ? '🎤 음성 감지됨 (Gemini로 전송 중)' : '🔇 대기 중'}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 음성 인터뷰 컨트롤 */}
@@ -600,13 +660,14 @@ export default function GeminiRealtimeVoiceInterview({
 
       {/* 도움말 */}
       <div className="mt-6 text-xs text-gray-500">
-        <p className="mb-2">💡 테스트 순서:</p>
+        <p className="mb-2">💡 문제 해결 가이드:</p>
         <ul className="list-disc list-inside space-y-1 ml-2">
-          <li>• 1단계: "Gemini Live 연결" 버튼으로 연결</li>
-          <li>• 2단계: "텍스트 메시지 테스트" 버튼으로 AI 음성 응답 확인</li>
-          <li>• 3단계: "음성 녹음 시작" 버튼으로 음성 입력 테스트</li>
-          <li>• 브라우저가 마이크 권한을 요청하면 허용해주세요</li>
-          <li>• 콘솔 로그에서 상세한 진행 상황을 확인할 수 있습니다</li>
+          <li>• <strong>1단계</strong>: "Gemini Live 연결" → 초록불 확인</li>
+          <li>• <strong>2단계</strong>: "텍스트 메시지 테스트" → AI 음성 나오는지 확인</li>
+          <li>• <strong>3단계</strong>: "음성 녹음 시작" → 마이크 레벨 바 움직이는지 확인</li>
+          <li>• <strong>4단계</strong>: 말하기 → 초록색 "음성 감지됨" 표시 확인</li>
+          <li>• 마이크 권한 허용 필요 / 콘솔 로그에서 "🎤 음성 감지됨" 확인</li>
+          <li>• 문제 시: 페이지 새로고침 후 다시 시도</li>
         </ul>
       </div>
     </div>
