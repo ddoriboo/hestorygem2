@@ -139,8 +139,8 @@ export default function GeminiRealtimeVoiceInterview({
       // Dynamic import로 Gemini SDK 로드
       const { GoogleGenAI, Modality } = await import('@google/genai')
       
-      // Gemini AI 초기화
-      const genAI = new GoogleGenAI({ apiKey: config.apiKey })
+      // Gemini AI 초기화 (config.apiKey 는 서버가 발급한 ephemeral token, v1alpha 필요)
+      const genAI = new GoogleGenAI({ apiKey: config.apiKey, httpOptions: { apiVersion: 'v1alpha' } })
       geminiClientRef.current = genAI
       
       console.log('Gemini Live 연결 시도:', config.model)

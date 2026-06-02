@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { GoogleGenAI } from '@google/genai'
 import { verifyToken } from '@/lib/auth'
 import { getSessionPrompt } from '@/lib/session-prompts'
 
@@ -23,12 +24,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '유효하지 않은 세션 번호입니다.' }, { status: 400 })
     }
 
+    const googleApiKey = process.env.GOOGLE_API_KEY
+    if (!googleApiKey) {
+      return NextResponse.json({ error: 'Google API 키가 설정되지 않았습니다.' }, { status: 500 })
+    }
+
     // 세션 프롬프트 가져오기
     const sessionPrompt = getSessionPrompt(sessionNumber)
 
-    // Gemini API 키 반환 (클라이언트에서 직접 연결)
+    // 영구 API 키 대신 단명 ephemeral token 발급 (클라이언트에서 직접 연결)
+    const ai = new GoogleGenAI({ apiKey: googleApiKey, httpOptions: { apiVersion: 'v1alpha' } })
+    const ephemeral = await ai.authTokens.create({
+      config: {
+        uses: 1,
+        expireTime: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        newSessionExpireTime: new Date(Date.now() + 2 * 60 * 1000).toISOString(),
+      },
+    })
+
     return NextResponse.json({
-      apiKey: process.env.GOOGLE_API_KEY,
+      apiKey: ephemeral.name, // ephemeral token (영구 키 아님)
       sessionPrompt,
       sessionNumber,
       model: 'gemini-2.5-flash-preview-native-audio-dialog'
