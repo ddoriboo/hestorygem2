@@ -84,7 +84,9 @@
 | 3 | 모바일 네이티브 | react-native-executorch (Whisper/Gemma4 + Supertonic3) | **고** — 이유는 모델이 아니라 **RN/Expo 앱 전환**(UI 재작성·스토어 심사·기기 QA). 백엔드는 재사용. 별도 제품 트랙 |
 | 4 | IoT(라즈베리파이) | whisper.cpp + 소형 LLM + Piper/Supertonic | 별도 HW 트랙. 종단 지연 8~25s → 비동기 "기억 기기"용 |
 
-> **권고**: 지금은 Gemini Live(클라우드) 기본 + 엔진 추상화. Tier2는 데스크톱 "프라이버시 모드" PoC로 선택적. Tier3/4는 별도 트랙으로 분리 결정.
+> **결정 ✅ (단계적 하이브리드)**: 동기는 **비용(클라우드 OPEX 누적) + 프라이버시(노인 생애사의 민감성)**.
+> 1) 지금은 Gemini Live 기본 + **클라우드 프라이버시 1차 강화(무보존/암호화)**, 2) 엔진 추상화 도입(엔진 교체 가능), 3) 온디바이스는 "프라이버시 모드" 옵션 트랙으로 병행 → 품질이 충분해지면 기본 승격.
+> **삼각 트레이드오프 유의**: 비용↓·프라이버시↑(온디바이스) vs 대화 품질↑·접근성↑(클라우드). 소형 모델은 Gemini 수준의 공감·꼬리질문을 아직 못 따라오고, 노인 사용자 구형폰은 온디바이스를 못 돌릴 수 있음 → 그래서 클라우드를 품질·접근성 베이스라인으로 유지.
 > **라이선스 함정**: 한국어 최강 소형 LLM인 EXAONE 1.2B·Kakao Kanana 2.1B는 **비상업 라이선스 → 상업 출시 불가**. 상업 가능: Gemma4(Apache, 네이티브 오디오), Qwen3(Apache), HyperCLOVA X SEED 1.5B(조건부 MAU≤1천만).
 
 ### 3.5 자서전 오디오북 (Phase 4, 선택)
@@ -108,7 +110,7 @@
 - **Phase 0 — 디자인 파운데이션**: 폰트 로드, `globals.css` 토큰(CSS 변수 + Tailwind v4 `@theme`), 공용 컴포넌트 라이브러리(`Button/Chip/Card/Icon/Waveform/Avatar/Toggle/PrivacyRibbon` 등 핸드오프 1:1 포팅), 죽은 컴포넌트·라우트 정리.
 - **Phase 1 — 핵심 화면 리스킨**: 로그인/회원가입 → 세션목록(Timeline) → 인터뷰(Capture+Reflect). 다크 테마 전면.
 - **Phase 2 — 자서전/내 이야기**: Explore·Timeline 미감(기억 카드·사람·주제).
-- **Phase 3a — 브라우저 음성 정식화**: ephemeral token(보안 수정) + Gemini Live 안정화, 인터뷰 컴포넌트 단일화, VoiceEngine 추상화 도입.
+- **Phase 3a — 브라우저 음성 정식화**: ephemeral token(보안 수정) + Gemini Live 안정화, 인터뷰 컴포넌트 단일화, VoiceEngine 추상화 도입. **+ 클라우드 프라이버시 1차 강화**: 무보존(no-retention) 설정, 저장 데이터 암호화, 정직한 프라이버시 카피.
 - **Phase 3b — 전화 인터뷰**: Twilio 브릿지 서버(별도 Railway 서비스) + 발신/통화 흐름 + DB(통화/예약). (Twilio 계정 준비 전까지 mock.)
 - **Phase 4 (선택) — VoxCPM2 오디오북**.
 - **별도 트랙 — 온디바이스**: Tier2 데스크톱 PoC / Tier3 RN 앱(의사결정 후).
@@ -117,7 +119,7 @@
 
 ## 6. 결정 대기 항목 (Open Decisions)
 
-1. **온디바이스 로드맵 레벨** — (A) 추상화만 / (B) Tier2 브라우저 PoC까지 / (C) Tier3 RN 앱 트랙 착수.  ← *현재 사용자 검토 중 (Tier3 비용 구조 설명 완료)*
+1. ~~**온디바이스 로드맵 레벨**~~ — ✅ **결정: 단계적 하이브리드** (클라우드 기본+프라이버시 강화 → 엔진 추상화 → 온디바이스 옵션 트랙 병행). 동기: 비용·프라이버시.
 2. **전화 채널 우선순위** — Phase 3b를 언제 착수할지, Twilio vs 국내 SIP 트렁크.
 3. **카피/네이밍** — 서비스명 "He'story" 유지 vs "OurStory" 채택, 대상 호칭("아버님" 고정 vs 일반화).
 4. **자서전 오디오북(Phase 4)** 포함 여부.
