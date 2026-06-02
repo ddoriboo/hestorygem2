@@ -887,125 +887,82 @@ export default function GeminiRealtimeVoiceInterview({
   const isMobile = typeof window !== 'undefined' && navigator.userAgent.match(/iPhone|iPad|iPod|Android/i)
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-4 sm:p-6">
-      <div className="mb-4 sm:mb-6">
-        <h3 className="text-lg sm:text-xl font-semibold text-gray-800 mb-2">
-          🎤 Gemini Live 실시간 음성 인터뷰
-        </h3>
-        <p className="text-sm sm:text-base text-gray-600 mb-2">{connectionStatus}</p>
-        <p className="text-xs text-gray-500">
-          Google의 최신 Gemini 2.5 Flash Native Audio Dialog 모델과 실시간 음성 대화를 나누세요
-        </p>
+    <div className="os-card p-5 sm:p-8">
+      <div className="mb-6 text-center">
+        <h3 className="text-ink mb-1">음성으로 이야기하기</h3>
+        <p className="text-ink-48 text-sm">{connectionStatus}</p>
         {isMobile && (
-          <p className="text-xs sm:text-sm text-amber-600 mt-2">
-            📱 모바일 환경입니다. Chrome 또는 Safari 브라우저 사용을 권장합니다.
+          <p className="text-xs text-ember mt-2">
+            📱 Chrome 또는 Safari 브라우저를 권장합니다.
           </p>
         )}
       </div>
 
-      {/* 연결 상태 및 음성 활동 표시 */}
-      <div className="flex flex-col items-center justify-center mb-4 sm:mb-6">
-        <div className="flex items-center mb-3">
-          <div className={`w-3 h-3 rounded-full mr-2 ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
-          <span className="text-sm text-gray-600">
-            {isConnected ? '연결됨' : '연결 안됨'}
-          </span>
+      {/* 숨쉬는 ember 마이크 — Capture */}
+      <div className="flex flex-col items-center mb-7">
+        <div className="relative flex items-center justify-center mb-4">
+          {isRecording && (
+            <span className="absolute w-36 h-36 rounded-full bg-ember/15 animate-breath" />
+          )}
+          <div
+            className={`relative w-28 h-28 rounded-full flex items-center justify-center text-4xl transition-colors ${
+              isRecording
+                ? 'bg-ember text-[#1a130b]'
+                : isConnected
+                ? 'bg-surface-3 text-ember'
+                : 'bg-surface-2 text-ink-48'
+            }`}
+          >
+            🎙️
+          </div>
         </div>
-        
-        {/* 음성 활동 표시 */}
-        {(isRecording || processorActive) && (
-          <div className="flex flex-col items-center space-y-2">
-            {/* 프로세서 상태 표시 */}
-            <div className={`px-3 py-1 rounded-full text-xs font-medium ${
-              processorActive 
-                ? 'bg-blue-100 text-blue-800' 
-                : 'bg-red-100 text-red-800'
-            }`}>
-              {processorActive ? '🔄 오디오 프로세서 활성' : '❌ 오디오 프로세서 비활성'}
+
+        {/* 상태 표시 */}
+        <div className="flex items-center gap-2">
+          <span className={`w-2.5 h-2.5 rounded-full ${isConnected ? 'bg-sage animate-pulse' : 'bg-ink-28'}`} />
+          <span className="text-ink-72 text-sm">{isConnected ? '연결됨' : '연결 안됨'}</span>
+        </div>
+
+        {/* 마이크 레벨 */}
+        {processorActive && (
+          <div className="mt-4 w-full max-w-xs">
+            <div className="h-2 bg-surface-3 rounded-pill overflow-hidden">
+              <div
+                className={`h-full transition-all duration-100 ${voiceDetected ? 'bg-sage' : 'bg-ember/60'}`}
+                style={{ width: `${Math.min(100, audioLevel * 1000)}%` }}
+              />
             </div>
-            
-            {processorActive && (
-              <>
-                <div className="flex items-center space-x-3">
-                  <span className="text-xs text-gray-500">마이크 레벨:</span>
-                  <div className="w-32 h-2 bg-gray-200 rounded-full overflow-hidden">
-                    <div 
-                      className={`h-full transition-all duration-100 ${
-                        voiceDetected ? 'bg-green-500' : 'bg-blue-400'
-                      }`}
-                      style={{ width: `${Math.min(100, audioLevel * 1000)}%` }}
-                    ></div>
-                  </div>
-                  <span className="text-xs text-gray-500">
-                    {(audioLevel * 100).toFixed(1)}%
-                  </span>
-                </div>
-                
-                <div className={`px-3 py-1 rounded-full text-xs font-medium ${
-                  voiceDetected 
-                    ? 'bg-green-100 text-green-800' 
-                    : 'bg-gray-100 text-gray-600'
-                }`}>
-                  {isRecording 
-                    ? (voiceDetected ? '🎤 음성 감지됨 (Gemini로 전송 중)' : '🔇 대기 중')
-                    : '⏸️ 녹음 중지 상태'
-                  }
-                </div>
-              </>
-            )}
+            <p className="text-center text-xs text-ink-48 mt-2">
+              {isRecording
+                ? voiceDetected ? '🎤 음성 감지됨 — 전송 중' : '🔇 말씀을 기다리고 있어요'
+                : '⏸️ 녹음 중지'}
+            </p>
           </div>
         )}
       </div>
 
-      {/* 음성 인터뷰 컨트롤 */}
-      <div className="flex flex-col items-center gap-4 mb-6">
+      {/* 컨트롤 */}
+      <div className="flex flex-col items-center gap-3 mb-6">
         {!isConnected ? (
-          <button
-            onClick={connectToGemini}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg text-lg transition-colors"
-          >
-            🎤 Gemini Live 연결
+          <button onClick={connectToGemini} className="os-btn os-btn-primary !min-h-[56px] !px-10 text-lg">
+            음성 인터뷰 연결하기
           </button>
         ) : (
-          <div className="flex flex-col gap-3">
-            {/* 마이크 테스트 버튼 */}
+          <div className="flex gap-3 w-full max-w-sm">
             <button
-              onClick={testMicrophone}
-              className="bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
+              onClick={startRecording}
+              disabled={isRecording || isAISpeaking}
+              className="os-btn os-btn-primary flex-1"
             >
-              🔍 마이크 테스트 (F12 콘솔 필수 확인!)
+              {isRecording ? '🔴 녹음 중…' : '🎙️ 이야기 시작'}
             </button>
-            
-            {/* 텍스트 테스트 버튼 */}
             <button
-              onClick={sendTestMessage}
-              disabled={isAISpeaking}
-              className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white font-bold py-2 px-4 rounded-lg transition-colors"
+              onClick={stopRecording}
+              disabled={!isRecording}
+              className="os-btn os-btn-ghost flex-1"
             >
-              💬 텍스트 메시지 테스트 (AI가 음성으로 응답)
+              ⏹️ 멈추기
             </button>
-            
-            {/* 음성 녹음 컨트롤 */}
-            <div className="flex gap-4">
-              <button
-                onClick={startRecording}
-                disabled={isRecording || isAISpeaking}
-                className={`font-bold py-3 px-6 rounded-lg text-lg transition-colors ${
-                  isRecording 
-                    ? 'bg-red-600 text-white cursor-not-allowed' 
-                    : 'bg-green-600 hover:bg-green-700 text-white'
-                }`}
-              >
-                {isRecording ? '🔴 녹음 중...' : '🎙️ 음성 녹음 시작'}
-              </button>
-              <button
-                onClick={stopRecording}
-                disabled={!isRecording}
-                className="bg-gray-600 hover:bg-gray-700 disabled:bg-gray-400 text-white font-bold py-3 px-6 rounded-lg text-lg transition-colors"
-              >
-                ⏹️ 녹음 중단
-              </button>
-            </div>
           </div>
         )}
       </div>
@@ -1013,28 +970,28 @@ export default function GeminiRealtimeVoiceInterview({
       {/* AI 응답 상태 */}
       {isAISpeaking && (
         <div className="text-center mb-4">
-          <div className="inline-flex items-center px-4 py-2 bg-blue-100 rounded-lg">
-            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
-            <span className="text-blue-800 text-sm">AI가 응답 중입니다...</span>
+          <div className="inline-flex items-center gap-2 px-4 py-2 os-card-2 border-sage/20">
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-sage" />
+            <span className="text-sage text-sm">AI가 응답하고 있어요…</span>
           </div>
         </div>
       )}
 
       {/* 대화 내용 */}
       {conversations.length > 0 && (
-        <div className="bg-gray-50 rounded-lg p-4 max-h-60 overflow-y-auto">
-          <h4 className="font-semibold text-gray-700 mb-3">실시간 대화 내용</h4>
+        <div className="os-card-2 p-4 max-h-64 overflow-y-auto">
+          <p className="os-label-micro mb-3">실시간 대화</p>
           <div className="space-y-3">
             {conversations.map((conv, index) => (
               <div key={index} className={`flex ${conv.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[80%] p-3 rounded-lg ${
-                  conv.role === 'user' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-white text-gray-800 border'
+                <div className={`max-w-[80%] p-3 rounded-md ${
+                  conv.role === 'user'
+                    ? 'bg-ember text-[#1a130b]'
+                    : 'bg-surface-3 text-ink border border-line'
                 }`}>
-                  <p className="text-sm">{conv.content}</p>
+                  <p className="text-sm whitespace-pre-wrap">{conv.content}</p>
                   <p className="text-xs opacity-70 mt-1">
-                    {conv.timestamp.toLocaleTimeString()}
+                    {conv.timestamp.toLocaleTimeString('ko-KR')}
                   </p>
                 </div>
               </div>
@@ -1043,19 +1000,19 @@ export default function GeminiRealtimeVoiceInterview({
         </div>
       )}
 
-      {/* 도움말 */}
-      <div className="mt-6 text-xs text-gray-500">
-        <p className="mb-2">💡 문제 해결 가이드:</p>
-        <ul className="list-disc list-inside space-y-1 ml-2">
-          <li>• <strong>1단계</strong>: "Gemini Live 연결" → 초록불 확인</li>
-          <li>• <strong>2단계</strong>: "마이크 테스트" → 콘솔에서 마이크 레벨 숫자 확인</li>
-          <li>• <strong>3단계</strong>: "텍스트 메시지 테스트" → AI 음성 나오는지 확인</li>
-          <li>• <strong>4단계</strong>: "음성 녹음 시작" → "오디오 프로세서 활성" 파란색 표시 확인</li>
-          <li>• <strong>5단계</strong>: 말하기 → 마이크 레벨 바 움직이고 "음성 감지됨" 초록색 표시 확인</li>
-          <li>• 마이크 권한 허용 필요 / 콘솔 로그에서 "📈 오디오 레벨" 및 "🎤 음성 감지됨" 확인</li>
-          <li>• 프로세서가 비활성이면 AudioContext 문제 / 문제 시: 페이지 새로고침 후 다시 시도</li>
-        </ul>
-      </div>
+      {/* 개발자 도구 (음성 디버그) */}
+      <details className="mt-6 text-ink-48">
+        <summary className="cursor-pointer text-xs hover:text-ink-72 select-none">개발자 도구 (음성 점검)</summary>
+        <div className="flex flex-wrap gap-2 mt-3">
+          <button onClick={testMicrophone} className="os-btn os-btn-ghost !min-h-[40px] !px-3 text-sm">
+            마이크 테스트
+          </button>
+          <button onClick={sendTestMessage} disabled={isAISpeaking} className="os-btn os-btn-ghost !min-h-[40px] !px-3 text-sm">
+            텍스트→음성 응답 테스트
+          </button>
+        </div>
+        <p className="text-xs mt-2">문제가 있으면 F12 콘솔 로그를 확인하거나 페이지를 새로고침해 주세요.</p>
+      </details>
     </div>
   )
 }

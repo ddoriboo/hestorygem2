@@ -124,96 +124,89 @@ export default function GeminiTextInterview({ sessionNumber, onConversationSave 
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-4 sm:p-6">
-      <div className="mb-4 sm:mb-6">
-        <h3 className="text-lg sm:text-xl font-semibold text-gray-800 mb-2">
-          🤖 Gemini 텍스트 인터뷰
-        </h3>
-        <p className="text-sm sm:text-base text-gray-600">
-          Google의 최신 Gemini 2.0 Flash 모델과 함께하는 인터뷰입니다.
+    <div className="os-card p-4 sm:p-6">
+      <div className="mb-5">
+        <h3 className="text-ink mb-1">텍스트로 이야기 나누기</h3>
+        <p className="text-ink-48 text-sm">
+          글로 천천히 회고하며 기록을 남길 수 있습니다.
         </p>
       </div>
 
       {!isStarted ? (
         <div className="text-center py-8">
-          <button
-            onClick={startInterview}
-            disabled={isLoading}
-            className="px-6 py-3 bg-blue-600 text-white text-lg rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-          >
-            {isLoading ? '🤖 Gemini 준비 중...' : '🤖 Gemini 인터뷰 시작'}
+          <button onClick={startInterview} disabled={isLoading} className="os-btn os-btn-primary">
+            {isLoading ? '준비 중…' : '텍스트 인터뷰 시작'}
           </button>
         </div>
       ) : (
         <>
           {/* 메시지 목록 */}
-          <div className="h-96 overflow-y-auto mb-4 p-4 border rounded-lg bg-gray-50">
+          <div className="h-96 overflow-y-auto mb-4 p-4 os-card-2">
             {messages.map((message, index) => (
               <div
                 key={index}
-                className={`mb-4 p-3 rounded-lg ${
+                className={`mb-4 p-3 rounded-md ${
                   message.role === 'assistant'
-                    ? 'bg-blue-100 border-l-4 border-blue-500'
-                    : 'bg-green-100 border-l-4 border-green-500 ml-8'
+                    ? 'bg-sage/10 border-l-2 border-sage'
+                    : 'bg-ember/10 border-l-2 border-ember ml-6'
                 }`}
               >
                 <div className="flex justify-between items-start mb-1">
-                  <span className={`text-sm font-semibold ${
-                    message.role === 'assistant' ? 'text-blue-800' : 'text-green-800'
+                  <span className={`os-label-micro ${
+                    message.role === 'assistant' ? 'text-sage' : 'text-ember'
                   }`}>
-                    {message.role === 'assistant' ? '🤖 Gemini 인터뷰어' : '👤 아버님'}
+                    {message.role === 'assistant' ? '인터뷰어' : '내 이야기'}
                   </span>
-                  <span className="text-xs text-gray-500">
-                    {message.timestamp.toLocaleTimeString()}
+                  <span className="text-xs text-ink-28">
+                    {message.timestamp.toLocaleTimeString('ko-KR')}
                   </span>
                 </div>
-                <p className="text-gray-800 whitespace-pre-wrap">{message.content}</p>
+                <p className="text-ink whitespace-pre-wrap">{message.content}</p>
               </div>
             ))}
-            
+
             {isLoading && (
-              <div className="mb-4 p-3 rounded-lg bg-blue-100 border-l-4 border-blue-500">
-                <div className="flex items-center">
-                  <span className="text-sm font-semibold text-blue-800 mr-2">🤖 Gemini 인터뷰어</span>
-                  <div className="flex space-x-1">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
-                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+              <div className="mb-4 p-3 rounded-md bg-sage/10 border-l-2 border-sage">
+                <div className="flex items-center gap-2">
+                  <span className="os-label-micro text-sage">인터뷰어</span>
+                  <div className="flex gap-1">
+                    <div className="w-1.5 h-1.5 bg-sage rounded-full animate-bounce"></div>
+                    <div className="w-1.5 h-1.5 bg-sage rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                    <div className="w-1.5 h-1.5 bg-sage rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
                   </div>
                 </div>
-                <p className="text-blue-700 text-sm mt-1">생각하고 있습니다...</p>
+                <p className="text-ink-48 text-sm mt-1">생각하고 있어요…</p>
               </div>
             )}
             <div ref={messagesEndRef} />
           </div>
 
           {/* 입력 영역 */}
-          <div className="flex space-x-2">
+          <div className="flex gap-2 items-stretch">
             <textarea
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               onKeyPress={handleKeyPress}
-              placeholder="편안하게 이야기해주세요..."
-              className="flex-1 p-3 border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
+              placeholder="편안하게 이야기해 주세요…"
+              className="os-input flex-1 resize-none !min-h-0 py-3"
               rows={3}
               disabled={isLoading}
             />
             <button
               onClick={sendMessage}
               disabled={!inputMessage.trim() || isLoading}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed min-w-[80px]"
+              className="os-btn os-btn-primary !px-5 shrink-0"
             >
-              {isLoading ? '전송 중...' : '전송'}
+              {isLoading ? '전송 중…' : '전송'}
             </button>
           </div>
 
           {/* 사용 팁 */}
-          <div className="mt-4 p-3 bg-gray-50 rounded-lg text-sm text-gray-600">
-            <h4 className="font-medium text-gray-800 mb-2">💡 Gemini 인터뷰 팁:</h4>
+          <div className="mt-4 os-card-2 p-3 text-sm text-ink-48">
+            <p className="text-ink-72 mb-2">💡 이야기 팁</p>
             <ul className="space-y-1 text-xs">
-              <li>• Google의 최신 Gemini 2.0 Flash 모델을 사용합니다</li>
-              <li>• 자연스럽고 편안하게 대화하듯 답변해주세요</li>
-              <li>• Enter 키로 메시지를 전송할 수 있습니다</li>
+              <li>• 자연스럽고 편안하게 대화하듯 답변해 주세요</li>
+              <li>• Enter 키로 메시지를 전송할 수 있어요</li>
               <li>• 길고 자세한 답변일수록 더 풍성한 자서전이 완성됩니다</li>
             </ul>
           </div>

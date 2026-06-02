@@ -104,49 +104,45 @@ export default function InterviewPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-2xl">로딩 중...</div>
+      <div className="min-h-screen flex items-center justify-center bg-ground">
+        <div className="text-ink-72 text-xl">불러오는 중…</div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-ground">
       {/* 헤더 */}
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">세션 {session?.sessionNumber}</h1>
-              <p className="text-lg text-gray-600 mt-1">{session?.title}</p>
-            </div>
-            <button
-              onClick={() => router.push('/')}
-              className="px-4 py-2 text-lg bg-gray-200 hover:bg-gray-300 rounded transition"
-            >
-              목록으로
-            </button>
+      <header className="border-b border-line bg-surface/60 backdrop-blur sticky top-0 z-10">
+        <div className="max-w-4xl mx-auto px-5 sm:px-8 py-4 flex justify-between items-center gap-4">
+          <div className="min-w-0">
+            <span className="font-mono text-xs text-ink-48">
+              CHAPTER {String(session?.sessionNumber ?? 1).padStart(2, '0')}
+            </span>
+            <h2 className="text-ink truncate">{session?.title}</h2>
           </div>
+          <button
+            onClick={() => router.push('/')}
+            className="os-btn os-btn-ghost !min-h-[40px] !px-4 text-base shrink-0"
+          >
+            목록으로
+          </button>
         </div>
       </header>
 
       {/* 음성 인터뷰 영역 */}
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-3xl mx-auto px-5 sm:px-8 py-8">
         {/* 기존 대화 내용 표시 */}
         {conversations.length > 0 && (
-          <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">이전 대화 기록</h3>
-            <div className="max-h-60 overflow-y-auto space-y-4">
+          <div className="os-card p-5 sm:p-6 mb-6">
+            <h3 className="text-ink mb-4">이전 대화 기록</h3>
+            <div className="max-h-64 overflow-y-auto space-y-4 pr-1">
               {conversations.map((conv) => (
-                <div key={conv.id} className="border-b border-gray-200 pb-4">
-                  <div className="mb-2">
-                    <p className="text-sm font-medium text-blue-700">AI:</p>
-                    <p className="text-sm text-gray-700">{conv.question}</p>
-                  </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-green-700">아버님:</p>
-                    <p className="text-sm text-gray-700">{conv.answer}</p>
-                  </div>
+                <div key={conv.id} className="border-b border-line pb-4 last:border-0">
+                  <p className="os-label-micro text-sage mb-1">인터뷰어</p>
+                  <p className="text-ink-72 text-sm mb-3">{conv.question}</p>
+                  <p className="os-label-micro text-ember mb-1">내 이야기</p>
+                  <p className="text-ink text-sm">{conv.answer}</p>
                 </div>
               ))}
             </div>
@@ -158,11 +154,11 @@ export default function InterviewPage() {
           sessionNumber={session?.sessionNumber || 1}
           onConversationSave={saveConversation}
         />
-        
+
         {/* Gemini 텍스트 기반 인터뷰 (대안) */}
         <div className="mt-6">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-            <p className="text-blue-800 text-sm">
+          <div className="os-card-2 p-4 mb-4 border-sage/20">
+            <p className="text-sage text-sm">
               💬 음성이 불편하시면 아래 텍스트 인터뷰를 이용하실 수 있습니다.
             </p>
           </div>
@@ -172,14 +168,10 @@ export default function InterviewPage() {
           />
         </div>
 
-
         {/* 세션 완료 버튼 */}
-        <div className="flex justify-center mt-6">
-          <button
-            onClick={handleCompleteSession}
-            className="px-8 py-4 bg-green-600 text-white text-xl font-semibold rounded-lg hover:bg-green-700 transition shadow-lg"
-          >
-            세션 완료
+        <div className="flex justify-center mt-8">
+          <button onClick={handleCompleteSession} className="os-btn os-btn-primary !px-10 !min-h-[56px] text-lg">
+            이 장(章) 마치기
           </button>
         </div>
       </main>

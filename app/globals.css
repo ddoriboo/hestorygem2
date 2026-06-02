@@ -1,83 +1,205 @@
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.css');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Noto+Serif+KR:wght@400;600;700&display=swap');
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #000000;
+/*
+  OurStory 디자인 시스템 — "황혼의 기억(memory at dusk)" 다크 에디토리얼
+  토큰은 OurStory OS 핸드오프 기준. Tailwind v4 @theme 으로 유틸리티(bg-*, text-*, font-*) 생성.
+*/
+@theme {
+  /* ground / surfaces */
+  --color-ground: #0E1116;
+  --color-surface: #141821;
+  --color-surface-2: #1B2029;
+  --color-surface-3: #242A35;
+
+  /* ink (파치먼트) — 알파 변형은 별도 토큰으로 제공 */
+  --color-ink: #ECE1CD;
+  --color-ink-72: rgba(236, 225, 205, 0.72);
+  --color-ink-48: rgba(236, 225, 205, 0.48);
+  --color-ink-28: rgba(236, 225, 205, 0.28);
+
+  /* accents */
+  --color-ember: #E9A86B;   /* 주요 행동 */
+  --color-sage: #9BB9A8;    /* 회고 / AI */
+  --color-rose: #D99B98;    /* 기억 */
+  --color-danger: #E08D7E;
+
+  /* 경계선 */
+  --color-line: rgba(236, 225, 205, 0.12);
+  --color-line-strong: rgba(236, 225, 205, 0.20);
+
+  /* fonts */
+  --font-display: 'Noto Serif KR', serif;
+  --font-body: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* radius */
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-pill: 999px;
+
+  /* motion */
+  --ease-out-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* ---- base ---- */
+html {
+  color-scheme: dark;
 }
 
-/* 다크 모드 비활성화 - 항상 밝은 테마 사용 */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: 'Noto Sans KR', Arial, sans-serif;
-  font-size: 18px;
-  line-height: 1.6;
+  background-color: var(--color-ground);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  font-size: 1.0625rem;          /* body 17 — 시니어 가독성 */
+  line-height: 1.65;
+  word-break: keep-all;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* 전체적인 텍스트 크기 증가 */
-h1 { font-size: 2.5rem !important; }
-h2 { font-size: 2rem !important; }
-h3 { font-size: 1.75rem !important; }
-h4 { font-size: 1.5rem !important; }
-p, li { font-size: 1.125rem !important; }
-
-/* 버튼 크기 증가 */
-button {
-  min-height: 48px;
-  padding: 12px 24px !important;
-  font-size: 1.125rem !important;
+/* 한글 이탤릭 미사용 */
+:lang(ko) i,
+:lang(ko) em {
+  font-style: normal;
   font-weight: 600;
 }
 
-/* 입력 필드 크기 증가 */
-input, textarea, select {
-  font-size: 1.125rem !important;
-  padding: 12px 16px !important;
-  min-height: 48px;
+/* display(세리프) 헤딩 */
+h1, h2, h3 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+h1 { font-size: 2rem; }      /* displayL 32 */
+h2 { font-size: 1.625rem; }  /* displayM 26 */
+h3 { font-size: 1.25rem; font-weight: 600; }  /* titleL 20 */
+
+/* 읽기용 본문(자서전 등) */
+.read-serif {
+  font-family: var(--font-display);
+  font-size: 1.0625rem;
+  line-height: 1.9;
+  font-weight: 400;
 }
 
-/* 링크 스타일 개선 */
+/* 링크 */
 a {
-  text-decoration: underline;
-  font-weight: 500;
+  color: var(--color-ember);
+  text-decoration: none;
 }
+a:hover { opacity: 0.85; }
 
-a:hover {
-  opacity: 0.8;
-}
-
-/* 높은 대비 색상 */
-.text-gray-600 { color: #4a4a4a !important; }
-.text-gray-700 { color: #333333 !important; }
-.text-gray-800 { color: #1a1a1a !important; }
-.text-gray-900 { color: #000000 !important; }
-
-/* 카드 및 섀도우 강화 */
-.shadow { box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15) !important; }
-.shadow-lg { box-shadow: 0 10px 15px rgba(0, 0, 0, 0.2) !important; }
-
-/* 포커스 스타일 강화 */
-*:focus {
-  outline: 3px solid #2563eb !important;
+/* 포커스 — 접근성 */
+:focus-visible {
+  outline: 2px solid var(--color-ember);
   outline-offset: 2px;
+  border-radius: var(--radius-xs);
 }
 
-/* 모바일 반응형 - 더 큰 터치 영역 */
-@media (max-width: 768px) {
-  button {
-    min-height: 56px;
-    font-size: 1.25rem !important;
+/* 스크롤바 */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb {
+  background: var(--color-surface-3);
+  border-radius: var(--radius-pill);
+}
+
+/* placeholder */
+::placeholder { color: var(--color-ink-48); }
+
+/* ---- 재사용 컴포넌트 클래스 ---- */
+@layer components {
+  .os-card {
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-lg);
   }
-  
-  input, textarea, select {
-    min-height: 56px;
-    font-size: 1.25rem !important;
+  .os-card-2 {
+    background-color: var(--color-surface-2);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-md);
   }
+
+  .os-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 52px;
+    padding: 0 1.5rem;
+    border-radius: var(--radius-pill);
+    font-family: var(--font-body);
+    font-size: 1.0625rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 160ms var(--ease-out-soft), opacity 160ms var(--ease-out-soft), background-color 160ms var(--ease-out-soft);
+  }
+  .os-btn:active { transform: scale(0.98); }
+  .os-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  .os-btn-primary {
+    background-color: var(--color-ember);
+    color: #1a130b;
+  }
+  .os-btn-primary:hover:not(:disabled) { background-color: #f0b67e; opacity: 1; }
+
+  .os-btn-ghost {
+    background-color: transparent;
+    color: var(--color-ink);
+    border: 1px solid var(--color-line-strong);
+  }
+  .os-btn-ghost:hover:not(:disabled) { background-color: var(--color-surface-2); opacity: 1; }
+
+  .os-input {
+    width: 100%;
+    min-height: 52px;
+    padding: 0.75rem 1rem;
+    background-color: var(--color-surface-2);
+    border: 1px solid var(--color-line-strong);
+    border-radius: var(--radius-md);
+    color: var(--color-ink);
+    font-family: var(--font-body);
+    font-size: 1.0625rem;
+    transition: border-color 160ms var(--ease-out-soft);
+  }
+  .os-input:focus {
+    outline: none;
+    border-color: var(--color-ember);
+  }
+
+  .os-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.375rem 0.75rem;
+    border-radius: var(--radius-pill);
+    background-color: var(--color-surface-2);
+    border: 1px solid var(--color-line);
+    font-size: 0.8125rem;
+    color: var(--color-ink-72);
+  }
+
+  .os-label-micro {
+    font-size: 0.6875rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-ink-48);
+    font-weight: 600;
+  }
+}
+
+/* ---- 모션 유틸 ---- */
+@keyframes os-breath {
+  0%, 100% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(1.06); opacity: 1; }
+}
+.animate-breath { animation: os-breath 3.2s var(--ease-out-soft) infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-breath { animation: none; }
 }

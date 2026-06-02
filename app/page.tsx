@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { sessionPrompts } from '@/lib/session-prompts'
+import Brand from '@/components/ui/Brand'
 
 interface Session {
   id: string
@@ -104,95 +105,102 @@ export default function HomePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-2xl">로딩 중...</div>
+      <div className="min-h-screen flex items-center justify-center bg-ground">
+        <div className="text-ink-72 text-xl">불러오는 중…</div>
       </div>
     )
   }
 
+  const completedCount = sessions.filter((s) => s.isCompleted).length
+  const progress = sessions.length ? Math.round((completedCount / sessions.length) * 100) : 0
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-ground">
       {/* 헤더 */}
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
-          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center space-y-3 sm:space-y-0">
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">He&apos;story</h1>
-            <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
-              <span className="text-base sm:text-lg text-gray-700">안녕하세요, {user?.username}님</span>
-              <button
-                onClick={handleLogout}
-                className="px-3 py-1.5 sm:px-4 sm:py-2 text-base sm:text-lg bg-gray-200 hover:bg-gray-300 rounded transition"
-              >
-                로그아웃
-              </button>
-            </div>
+      <header className="border-b border-line bg-surface/60 backdrop-blur">
+        <div className="max-w-6xl mx-auto px-5 sm:px-8 py-4 flex justify-between items-center">
+          <Brand size="sm" href="/" />
+          <div className="flex items-center gap-3 sm:gap-4">
+            <span className="hidden sm:inline text-ink-72">{user?.username}님</span>
+            <button onClick={handleLogout} className="os-btn os-btn-ghost !min-h-[40px] !px-4 text-base">
+              로그아웃
+            </button>
           </div>
         </div>
       </header>
 
       {/* 메인 콘텐츠 */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row sm:justify-between sm:items-center space-y-3 sm:space-y-0">
-          <h2 className="text-xl sm:text-2xl font-semibold">인터뷰 세션 목록</h2>
-          <Link
-            href="/my-story"
-            className="px-4 py-2 sm:px-6 sm:py-3 bg-green-600 text-white text-base sm:text-lg rounded hover:bg-green-700 transition text-center"
-          >
-            내 이야기 보기
-          </Link>
+      <main className="max-w-6xl mx-auto px-5 sm:px-8 py-8 sm:py-10">
+        <div className="mb-8">
+          <p className="os-label-micro mb-2">나의 자서전 여정</p>
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4">
+            <div>
+              <h1 className="text-ink">열두 번의 이야기</h1>
+              <p className="text-ink-72 mt-2">
+                지나온 인생을 한 장(章)씩 기록합니다 · {completedCount}/{sessions.length} 완료
+              </p>
+            </div>
+            <Link href="/my-story" className="os-btn os-btn-ghost self-start sm:self-auto">
+              내 이야기 보기
+            </Link>
+          </div>
+          {/* 진행 타임라인 */}
+          <div className="mt-5 h-1.5 w-full rounded-pill bg-surface-3 overflow-hidden">
+            <div
+              className="h-full rounded-pill bg-ember transition-all duration-500"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
         </div>
 
-        <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 sm:gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
           {sessions.map((session) => (
             <div
               key={session.id}
-              className="bg-white rounded-lg shadow-md p-4 sm:p-6 hover:shadow-lg transition"
+              className="os-card p-5 sm:p-6 flex flex-col transition hover:border-line-strong"
             >
-              <div className="flex justify-between items-start mb-3 sm:mb-4">
-                <h3 className="text-lg sm:text-xl font-semibold text-gray-900">
-                  세션 {session.sessionNumber}
-                </h3>
+              <div className="flex justify-between items-center mb-3">
+                <span className="font-mono text-sm text-ink-48">
+                  CHAPTER {String(session.sessionNumber).padStart(2, '0')}
+                </span>
                 {session.isCompleted && (
-                  <span className="px-2 py-0.5 sm:px-3 sm:py-1 bg-green-100 text-green-800 text-xs sm:text-sm rounded">
-                    완료
-                  </span>
+                  <span className="os-chip border-sage/30 text-sage">완료</span>
                 )}
               </div>
-              
-              <p 
-                className="text-sm sm:text-base text-gray-700 mb-3 sm:mb-4 cursor-pointer hover:text-blue-600 transition-colors line-clamp-2"
+
+              <h3
+                className="text-ink mb-2 cursor-pointer hover:text-ember transition-colors line-clamp-2"
                 onClick={() => setSelectedSessionNumber(session.sessionNumber)}
-                title="클릭하여 질문 목록 보기"
+                title="눌러서 질문 미리보기"
               >
                 {session.title}
-              </p>
-              
-              {session.conversationCount > 0 && (
-                <p className="text-xs sm:text-sm text-gray-500 mb-3 sm:mb-4">
-                  {session.conversationCount}개의 대화
-                </p>
-              )}
+              </h3>
 
-              <div className="flex flex-col space-y-2">
+              <p className="text-ink-48 text-sm mb-5">
+                {session.conversationCount > 0
+                  ? `${session.conversationCount}개의 대화 기록`
+                  : '아직 시작하지 않았어요'}
+              </p>
+
+              <div className="mt-auto flex flex-col gap-2">
                 <Link
                   href={`/interview/${session.id}`}
-                  className="w-full px-3 py-2 sm:px-4 bg-blue-600 text-white text-center text-sm sm:text-base rounded hover:bg-blue-700 transition"
+                  className="os-btn os-btn-primary w-full"
                 >
-                  {session.conversationCount > 0 ? '계속하기' : '시작하기'}
+                  {session.conversationCount > 0 ? '이어서 이야기하기' : '이야기 시작하기'}
                 </Link>
-                
-                <div className="flex space-x-2">
+                <div className="flex gap-2">
                   <button
                     onClick={() => handleResetSession(session.id)}
-                    className="flex-1 px-3 py-1.5 sm:px-4 sm:py-2 bg-yellow-500 text-white text-sm sm:text-base rounded hover:bg-yellow-600 transition"
+                    className="os-btn os-btn-ghost flex-1 !min-h-[44px] !px-3 text-base"
                   >
                     다시하기
                   </button>
                   <button
                     onClick={() => handleDeleteSession(session.id)}
-                    className="flex-1 px-3 py-1.5 sm:px-4 sm:py-2 bg-red-500 text-white text-sm sm:text-base rounded hover:bg-red-600 transition"
+                    className="os-btn os-btn-ghost flex-1 !min-h-[44px] !px-3 text-base !text-danger !border-danger/30"
                   >
-                    삭제하기
+                    삭제
                   </button>
                 </div>
               </div>
@@ -203,50 +211,53 @@ export default function HomePage() {
 
       {/* 세션 질문 미리보기 팝업 */}
       {selectedSessionNumber && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
           onClick={() => setSelectedSessionNumber(null)}
         >
-          <div 
-            className="bg-white rounded-lg max-w-2xl w-full max-h-[80vh] overflow-hidden shadow-xl"
+          <div
+            className="os-card max-w-2xl w-full max-h-[82vh] overflow-hidden bg-surface"
             onClick={(e) => e.stopPropagation()}
           >
             {/* 팝업 헤더 */}
-            <div className="bg-blue-600 text-white p-4 flex justify-between items-center">
-              <h3 className="text-xl font-semibold">
-                세션 {selectedSessionNumber}: {sessionPrompts[selectedSessionNumber]?.title}
-              </h3>
+            <div className="p-5 flex justify-between items-center border-b border-line">
+              <div>
+                <span className="font-mono text-xs text-ink-48">
+                  CHAPTER {String(selectedSessionNumber).padStart(2, '0')}
+                </span>
+                <h3 className="text-ink mt-1">
+                  {sessionPrompts[selectedSessionNumber]?.title}
+                </h3>
+              </div>
               <button
                 onClick={() => setSelectedSessionNumber(null)}
-                className="text-white hover:text-gray-200 text-2xl"
+                className="text-ink-48 hover:text-ink text-3xl leading-none px-2"
+                aria-label="닫기"
               >
                 ×
               </button>
             </div>
 
             {/* 팝업 내용 */}
-            <div className="p-6 overflow-y-auto max-h-[calc(80vh-80px)]">
-              <div className="mb-4">
-                <p className="text-gray-600 mb-4">
-                  이 세션에서는 아버님께서 다음과 같은 질문들을 통해 인생 이야기를 들려주시게 됩니다.
-                </p>
-              </div>
+            <div className="p-6 overflow-y-auto max-h-[calc(82vh-88px)]">
+              <p className="text-ink-72 mb-5">
+                이번 장에서는 다음과 같은 질문들을 통해 인생 이야기를 들려주시게 됩니다.
+              </p>
 
               <div className="space-y-3">
                 {sessionPrompts[selectedSessionNumber]?.questions.map((question, index) => (
-                  <div key={index} className="flex items-start">
-                    <span className="text-blue-600 font-semibold mr-2 mt-0.5">
-                      {index + 1}.
+                  <div key={index} className="flex items-start gap-3">
+                    <span className="font-mono text-ember text-sm mt-1">
+                      {String(index + 1).padStart(2, '0')}
                     </span>
-                    <p className="text-gray-700 flex-1">{question}</p>
+                    <p className="text-ink flex-1">{question}</p>
                   </div>
                 ))}
               </div>
 
-              <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-                <p className="text-sm text-blue-800">
-                  💡 <strong>팁:</strong> 편안한 마음으로 천천히 이야기해주세요. 
-                  AI 인터뷰어가 아버님의 속도에 맞춰 대화를 이어갑니다.
+              <div className="mt-6 os-card-2 p-4 border-sage/20">
+                <p className="text-sm text-sage">
+                  💡 편안한 마음으로 천천히 이야기해 주세요. AI 인터뷰어가 속도에 맞춰 대화를 이어갑니다.
                 </p>
               </div>
             </div>
