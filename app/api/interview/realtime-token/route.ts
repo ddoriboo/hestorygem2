@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { GoogleGenAI } from '@google/genai'
 import { verifyToken } from '@/lib/auth'
 import { getSessionPrompt } from '@/lib/session-prompts'
 
@@ -31,10 +32,18 @@ export async function POST(request: NextRequest) {
     // 세션별 상세 프롬프트 사용
     const sessionPrompt = getSessionPrompt(sessionNumber)
 
-    // Gemini API 키와 설정을 클라이언트에 안전하게 전달
-    
-    return NextResponse.json({ 
-      apiKey: googleApiKey,
+    // 영구 API 키를 클라이언트로 노출하지 않고 단명 ephemeral token을 발급해 전달
+    const ai = new GoogleGenAI({ apiKey: googleApiKey, httpOptions: { apiVersion: 'v1alpha' } })
+    const ephemeral = await ai.authTokens.create({
+      config: {
+        uses: 1,
+        expireTime: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        newSessionExpireTime: new Date(Date.now() + 2 * 60 * 1000).toISOString(),
+      },
+    })
+
+    return NextResponse.json({
+      apiKey: ephemeral.name, // ephemeral token (영구 키 아님)
       sessionPrompt: sessionPrompt + "\n\n말할 때는 자연스럽고 빠르게 말해주세요.",
       model: 'gemini-2.5-flash-preview-native-audio-dialog'
     })
