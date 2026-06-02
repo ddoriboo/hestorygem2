@@ -25,9 +25,9 @@
 
 ---
 
-## 2. 디자인 적용 매핑 (OurStory OS → He'story)
+## 2. 디자인 적용 매핑 (OurStory OS → OurStory 앱)
 
-| OurStory OS 화면 | He'story 대응 | 비고 |
+| OurStory OS 화면 | OurStory 앱 대응 | 비고 |
 |---|---|---|
 | Capture (대기/녹음/저장) | 인터뷰 음성 모드 | 숨쉬는 ember 마이크, 실시간 파형, 받아쓰기 표시 |
 | Reflect (회고 채팅) | 인터뷰 텍스트 모드 | AI/사용자 말풍선, citation 카드, thinking dots |
@@ -50,8 +50,8 @@
 
 ### 3.1 엔진 추상화 (핵심 설계 원칙)
 ```
-인터뷰 UI ── VoiceEngine 인터페이스 ──┬─ GeminiLiveEngine   (클라우드, 기본)
-                                     ├─ TwilioPhoneEngine  (전화 채널)
+인터뷰 UI ── VoiceEngine 인터페이스 ──┬─ GeminiLiveEngine   (클라우드, 기본 / 앱 내 "전화처럼" WebRTC)
+                                     ├─ TwilioPhoneEngine  (진짜 전화 PSTN, 후속 Phase 3c)
                                      └─ LocalWebGPUEngine  (Tier2, 데스크톱 프라이버시 모드 / 선택)
 ```
 한 번 만들고 엔진만 교체. UI/DB는 엔진에 비의존.
@@ -78,7 +78,7 @@
 - 장점: **앱·스마트폰 리터러시 불필요(폴더폰 OK) → 노인 접근성 최강.**
 - 제약: 한국 outbound CID 사전등록·자동발신 규제(본인 동의 콜이면 리스크↓), 분당 통신비. 국내 SIP 트렁크 대안 비교. `TWILIO_*` 외부 계정 전제 → 코드는 mock 선행 가능.
 
-### 3.4 온디바이스 (티어별, **로드맵 레벨 결정 보류**)
+### 3.4 온디바이스 (티어별, **결정 ✅ 단계적 하이브리드** — 아래 참조)
 | Tier | 형태 | 추천 스택 | 비용/난이도 |
 |---|---|---|---|
 | 2 | 브라우저(WebGPU) | Moonshine-tiny-ko(STT) + Qwen3/SmolLM(LLM) + Supertonic3(TTS), transformers.js+ORT Web | 저~중 (웹 스택 유지). **단 iOS Safari 메모리 한계 → 데스크톱 전용 실험** |
@@ -97,21 +97,21 @@
 
 ## 4. 데이터 모델 변경
 
-기존 `User / Session / Conversation / Autobiography` 유지 + 추가:
-- `PhoneNumber` — 사용자 전화번호, 검증 상태, 동의 시각.
-- `CallSession` — 통화 로그(시작/종료/길이/상태), `Conversation` 연결, 녹취/받아쓰기 참조.
-- `ScheduledCall` — 예약 발신(시각, 반복, 세션 번호).
-- (선택) `Person` / `Theme` — Explore 화면용 사람·주제 태깅 (자서전 재료 구조화).
-- (선택) `AudiobookRender` — VoxCPM2 낭독 산출물.
+기존 `User / Session / Conversation / Autobiography` 유지 + **Phase별 점진 추가**:
+
+- **Phase 1 (호칭 맞춤화)**: `User`에 `honorific` 필드 — 사용자별 호칭 맞춤(아버님/어머님/부모님/어르신/직접 입력). `getSessionPrompt()`·UI 카피에 주입.
+- **Phase 3b (앱 내 통화/예약)**: `ScheduledCall` — 예약·리마인드(시각, 반복, 세션 번호, 카카오 알림 발송 여부).
+- **Phase 3c (진짜 전화 PSTN)**: `PhoneNumber`(번호·검증·동의 시각), `CallSession`(통화 로그: 시작/종료/길이/상태, `Conversation` 연결, 녹취/받아쓰기 참조).
+- **(선택) Explore**: `Person` / `Theme` — 사람·주제 태깅(자서전 재료 구조화).
 
 ---
 
 ## 5. 단계별 실행 (PR 단위, 모두 draft PR)
 
-- **Phase 0 — 디자인 파운데이션**: 폰트 로드, `globals.css` 토큰(CSS 변수 + Tailwind v4 `@theme`), 공용 컴포넌트 라이브러리(`Button/Chip/Card/Icon/Waveform/Avatar/Toggle/PrivacyRibbon` 등 핸드오프 1:1 포팅), 죽은 컴포넌트·라우트 정리.
+- **Phase 0 — 디자인 파운데이션 + 보안 핫픽스**: 폰트 로드, `globals.css` 토큰(CSS 변수 + Tailwind v4 `@theme`), 공용 컴포넌트 라이브러리(`Button/Chip/Card/Icon/Waveform/Avatar/Toggle/PrivacyRibbon` 등 핸드오프 1:1 포팅), 죽은 컴포넌트·라우트 정리. **🔴 보안 핫픽스(우선)**: `/api/interview/realtime-token`의 `GOOGLE_API_KEY` 원본 노출 → ephemeral token으로 교체(라이브 키 유출 결함, 디자인보다 먼저).
 - **Phase 1 — 핵심 화면 리스킨**: 로그인/회원가입 → 세션목록(Timeline) → 인터뷰(Capture+Reflect). 다크 테마 전면.
 - **Phase 2 — 자서전/내 이야기**: Explore·Timeline 미감(기억 카드·사람·주제).
-- **Phase 3a — 브라우저 음성 정식화**: ephemeral token(보안 수정) + Gemini Live 안정화, 인터뷰 컴포넌트 단일화, VoiceEngine 추상화 도입. **+ 클라우드 프라이버시 1차 강화**: 무보존(no-retention) 설정, 저장 데이터 암호화, 정직한 프라이버시 카피.
+- **Phase 3a — 브라우저 음성 정식화**: Gemini Live 안정화(보안 핫픽스는 Phase 0에서 선행), 인터뷰 컴포넌트 단일화, VoiceEngine 추상화 도입. **+ 클라우드 프라이버시 1차 강화**: 무보존(no-retention) 설정, 저장 데이터 암호화, 정직한 프라이버시 카피.
 - **Phase 3b — "전화처럼" 인터뷰(앱 내 WebRTC)**: 풀스크린 통화 UI(발신음·통화시간·종료) + Gemini Live 연결 + 카카오톡 채널/알림톡 예약·리마인드 보조. 통신비 0.
 - **Phase 3c (후속) — 진짜 전화(PSTN)**: Twilio 브릿지 서버(별도 Railway 서비스) + 발신/통화 흐름 + DB(통화/예약). (Twilio 계정 준비 전까지 mock.) 접근성 수요 확인 후 착수.
 - ~~**Phase 4 — VoxCPM2 오디오북**~~: ❌ 제외.
@@ -123,8 +123,7 @@
 
 1. ~~**온디바이스 로드맵 레벨**~~ — ✅ **결정: 단계적 하이브리드** (클라우드 기본+프라이버시 강화 → 엔진 추상화 → 온디바이스 옵션 트랙 병행). 동기: 비용·프라이버시.
 2. ~~**전화 채널**~~ — ✅ **결정: 앱 내 WebRTC "전화처럼" 우선**(통신비 0, 기존 자산), 카카오톡=예약/알림 보조. PSTN(Twilio/국내 SIP)은 접근성 수요 확인 후 후속(Phase 3c). 보이스톡 직접 연동 불가(공개 API 없음).
-3. **호칭** — "아버님" 고정 vs 일반화(어머님/부모님/어르신 등 선택). ← *남은 소소한 결정. 서비스명이 OurStory(우리 모두의 이야기)이므로 **일반화 권장**.*
-   ~~서비스명~~ ✅ **결정: OurStory** 채택(He'story → OurStory).
+3. ~~**호칭**~~ — ✅ **결정: 사용자별 맞춤 호칭**(고정 X). 아버님/어머님/부모님/어르신/직접 입력 → `User.honorific`로 저장, 프롬프트·UI에 주입. / ~~서비스명~~ ✅ **OurStory** 채택.
 4. ~~**자서전 오디오북(Phase 4)**~~ — ✅ **결정: 제외**.
 
 ---
