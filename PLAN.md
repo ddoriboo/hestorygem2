@@ -108,8 +108,8 @@
 
 ## 5. 단계별 실행 (PR 단위, 모두 draft PR)
 
-- **Phase 0 — 디자인 파운데이션 + 보안 핫픽스**: 폰트 로드, `globals.css` 토큰(CSS 변수 + Tailwind v4 `@theme`), 공용 컴포넌트 라이브러리(`Button/Chip/Card/Icon/Waveform/Avatar/Toggle/PrivacyRibbon` 등 핸드오프 1:1 포팅), 죽은 컴포넌트·라우트 정리. **🔴 보안 핫픽스(우선)**: `/api/interview/realtime-token`의 `GOOGLE_API_KEY` 원본 노출 → ephemeral token으로 교체(라이브 키 유출 결함, 디자인보다 먼저).
-- **Phase 1 — 핵심 화면 리스킨**: 로그인/회원가입 → 세션목록(Timeline) → 인터뷰(Capture+Reflect). 다크 테마 전면.
+- **Phase 0 — 디자인 파운데이션 + 보안 핫픽스** ✅: 폰트 로드(Pretendard/Noto Serif KR/JetBrains Mono), `globals.css` 토큰(CSS 변수 + Tailwind v4 `@theme`) + `.os-*` 컴포넌트 클래스, `Brand` 워드마크, 죽은 컴포넌트 4종 정리. **🔴 보안 핫픽스**: ephemeral token 교체는 **PR #2(별도)** 에서 완료.
+- **Phase 1 — 핵심 화면 리스킨** ✅: 로그인/회원가입 → 세션목록(Timeline·진행바·CHAPTER 카드) → 인터뷰(Capture=숨쉬는 ember 마이크 / Reflect=다크 채팅) → 내 이야기/자서전. 다크 "memory at dusk" 전면. 하드코딩 "아버님" 호칭 중립화(맞춤 호칭은 후속 `User.honorific` 연동).
 - **Phase 2 — 자서전/내 이야기**: Explore·Timeline 미감(기억 카드·사람·주제).
 - **Phase 3a — 브라우저 음성 정식화**: Gemini Live 안정화(보안 핫픽스는 Phase 0에서 선행), 인터뷰 컴포넌트 단일화, VoiceEngine 추상화 도입. **+ 클라우드 프라이버시 1차 강화**: 무보존(no-retention) 설정, 저장 데이터 암호화, 정직한 프라이버시 카피.
 - **Phase 3b — "전화처럼" 인터뷰(앱 내 WebRTC)**: 풀스크린 통화 UI(발신음·통화시간·종료) + Gemini Live 연결 + 카카오톡 채널/알림톡 예약·리마인드 보조. 통신비 0.
